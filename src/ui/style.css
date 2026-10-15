@@ -44,6 +44,18 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   box-shadow: 0 2px 6px #0002; backdrop-filter: blur(4px);
 }
 #msg:empty { display: none; }
+#choices-bar {
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; max-width: 380px;
+}
+#choices-bar[hidden] { display: none; }
+.choice-btn {
+  background: #ffffffee; color: #222; font-size: 0.95rem; font-weight: 700;
+  padding: 0.5em 1em; border-radius: 999px; box-shadow: 0 3px 0 #0003;
+  border: 2px solid #ff8a3d; cursor: pointer; animation: pop 0.2s ease-out;
+}
+.choice-btn:hover, .choice-btn:active {
+  background: #ff8a3d; color: #fff; transform: translateY(2px);
+}
 
 .overlay {
   position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;

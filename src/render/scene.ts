@@ -48,7 +48,13 @@ function createPiece(color: Color, variant: number): THREE.Group {
   icon.position.y = 1.35;
   icon.scale.setScalar(0.7);
   const rig = buildCharacter(color, variant);
-  g.add(base, rig, icon);
+  // Invisible larger hit cylinder for easy tapping on mobile/desktop
+  const hitMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.55, 0.55, 1.8, 8),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  hitMesh.position.y = 0.9;
+  g.add(base, rig, icon, hitMesh);
   g.userData.rig = rig;
   return g;
 }
@@ -89,6 +95,8 @@ export class Scene3D {
   private dancing: THREE.Group[] = [];
   private confetti = new Confetti();
   private lastT = 0;
+  private baseDist = 23;
+  private isZoomed = false;
   /** Called with screen coords when a character speaks; UI draws the bubble. */
   onSpeak?: (text: string, x: number, y: number) => void;
   /** Called when sound effects should play. Keeps render decoupled from audio. */
@@ -180,8 +188,8 @@ export class Scene3D {
     const w = innerWidth, h = innerHeight;
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
-    const dist = w < h ? (w < 420 ? 32 : 28) : 23;
-    this.camera.position.setLength(dist);
+    this.baseDist = w < h ? (w < 420 ? 32 : 28) : 23;
+    if (!this.isZoomed) this.camera.position.setLength(this.baseDist);
     this.camera.updateProjectionMatrix();
   }
 
@@ -204,7 +212,15 @@ export class Scene3D {
     this.highlighted.forEach((p) => (p.position.y = 0.15 + Math.abs(Math.sin(t / 200)) * 0.25));
 
     this.camera.position.sub(this.shakeOffset);
-    this.controls.target.lerp(this.focus, 0.05);
+    this.controls.target.lerp(this.focus, 0.07);
+
+    // Dynamic zoom in/out with smooth lerp
+    const targetDist = this.isZoomed ? 12 : this.baseDist;
+    const camDir = this.camera.position.clone().sub(this.controls.target).normalize();
+    const curDist = this.camera.position.distanceTo(this.controls.target);
+    const newDist = THREE.MathUtils.lerp(curDist, targetDist, 0.07);
+    this.camera.position.copy(this.controls.target).addScaledVector(camDir, newDist);
+
     this.controls.update();
     this.shake = Math.max(0, this.shake - dt);
     this.shakeOffset.set((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake, 0);
@@ -307,11 +323,13 @@ export class Scene3D {
       if (e.type === 'diceRolled') await this.rollDice(e.value);
       else if (e.type === 'tokenMoved') {
         mover = piece!;
-        this.focus.copy(world(tokenCell(e.color, e.path[e.path.length - 1], e.token))).multiplyScalar(0.4);
+        this.isZoomed = true;
         // Bananildo trips on a random hop now and then (cosmetic only).
         const trip = e.color === 'yellow' && Math.random() < 0.3 ? Math.floor(Math.random() * e.path.length) : -1;
         for (let i = 0; i < e.path.length; i++) {
-          await this.hop(piece!, world(tokenCell(e.color, e.path[i], e.token)));
+          const dest = world(tokenCell(e.color, e.path[i], e.token));
+          this.focus.copy(dest);
+          await this.hop(piece!, dest);
           if (i === trip) {
             this.onSound?.('trip');
             this.speak(piece!, pickLine(TRIP_LINES));
@@ -319,6 +337,9 @@ export class Scene3D {
           }
         }
         if (e.path.length === 1 && e.path[0] === 0 && Math.random() < 0.5) this.speak(piece!, pickLine(CHARACTERS[e.color].lines.enter));
+        await sleep(350);
+        this.isZoomed = false;
+        this.focus.set(0, 0, 0);
       } else if (e.type === 'tokenCaptured') {
         await this.fly(piece!, world(tokenCell(e.color, BASE, e.token)));
         this.speak(piece!, pickLine(CHARACTERS[e.color].lines.captured));

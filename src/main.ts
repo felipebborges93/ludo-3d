@@ -7,6 +7,7 @@ import { showBubble } from './ui/bubble';
 import { chooseMove } from './ai/bot';
 import { sound } from './audio/sound';
 import { net, RoomState } from './net/network';
+import { ACCESSORY_LABELS } from './render/characters';
 
 const PLAYERS: Record<number, Color[]> = {
   2: ['red', 'yellow'],
@@ -72,7 +73,9 @@ function refresh(note = '') {
     ui.turn.innerHTML = `Vez de ${label(c)} ${isMyTurn ? '<b>(Você)</b>' : `(${playerInfo.name})`}`;
     ui.msg.innerHTML = note || (state.phase === 'move' ? (isMyTurn ? `Tirou ${state.dice}. Toque numa peça.` : 'Escolhendo peça...') : (isMyTurn ? 'Sua vez de rolar!' : 'Aguardando rolagem...'));
     ui.roll.disabled = busy || state.phase !== 'roll' || !isMyTurn;
-    scene.highlight(c, busy || !isMyTurn ? [] : legalMoves(state));
+    const moves = busy || !isMyTurn ? [] : legalMoves(state);
+    scene.highlight(c, moves);
+    renderChoices(c, moves);
     return;
   }
 
@@ -80,9 +83,35 @@ function refresh(note = '') {
   const type = slotTypes[c];
   const isBot = type !== 'human';
   ui.turn.innerHTML = `Vez de ${label(c)} ${isBot ? `(${PLAYER_TYPE_LABELS[type]})` : ''}`;
-  ui.msg.innerHTML = note || (state.phase === 'move' ? (isBot ? 'Pensando...' : `Tirou ${state.dice}. Toque numa peça.`) : (isBot ? 'Rolando dado...' : ''));
+  ui.msg.innerHTML = note || (state.phase === 'move' ? (isBot ? 'Pensando...' : `Tirou ${state.dice}. Escolha a peça:`) : (isBot ? 'Rolando dado...' : ''));
   ui.roll.disabled = busy || state.phase !== 'roll' || isBot;
-  scene.highlight(c, busy || isBot ? [] : legalMoves(state));
+
+  const moves = busy || isBot ? [] : legalMoves(state);
+  scene.highlight(c, moves);
+  renderChoices(c, moves);
+}
+
+function renderChoices(color: Color, moves: number[]) {
+  if (!state || state.phase !== 'move' || !moves.length) {
+    ui.choicesBar.hidden = true;
+    ui.choicesBar.innerHTML = '';
+    return;
+  }
+  ui.choicesBar.hidden = false;
+  ui.choicesBar.innerHTML = '';
+  for (const tok of moves) {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    const acc = ACCESSORY_LABELS[tok] || `Peça ${tok + 1}`;
+    const pos = state.tokens[color][tok];
+    const loc = pos === -1 ? 'Sair da base' : pos >= 52 ? `Final ${pos - 51}` : `Casa ${pos}`;
+    btn.innerHTML = `${acc} <small>(${loc})</small>`;
+    btn.onclick = () => {
+      sound.click();
+      act({ type: 'move', token: tok });
+    };
+    ui.choicesBar.appendChild(btn);
+  }
 }
 
 function describe(events: GameEvent[]): string {
@@ -137,17 +166,6 @@ async function act(action: Parameters<typeof apply>[1]) {
   }
 
   refresh(describe(res.events));
-
-  // Single legal move autoplay for humans
-  const c = currentColor(state);
-  if (slotTypes[c] === 'human') {
-    const moves = legalMoves(state);
-    if (moves.length === 1) {
-      act({ type: 'move', token: moves[0] });
-      return;
-    }
-  }
-
   scheduleBotTurn();
 }
 
@@ -375,7 +393,7 @@ let down = { x: 0, y: 0 };
 const canvas = document.getElementById('c')!;
 canvas.addEventListener('pointerdown', (e) => (down = { x: e.clientX, y: e.clientY }));
 canvas.addEventListener('pointerup', (e) => {
-  if (!state || busy || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) return;
+  if (!state || busy || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 24) return;
   const c = currentColor(state);
 
   if (isOnline) {

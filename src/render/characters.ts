@@ -130,6 +130,8 @@ function body(color: Color): THREE.Object3D[] {
   }
 }
 
+export const ACCESSORY_LABELS = ['🎩 Cartola', '🎀 Laço', '👑 Coroa', '🥳 Gorro'] as const;
+
 function accessory(variant: number, y: number): THREE.Object3D {
   const g = new THREE.Group();
   if (variant === 0) g.add(part(geo.cyl, 0x222222, [0, 0.12, 0], [0.13, 0.22, 0.13]), part(geo.cyl, 0x222222, [0, 0.01, 0], [0.2, 0.02, 0.2]));

@@ -28,6 +28,7 @@ export const TEAM: Record<Color, { name: string; icon: string; css: string }> = 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 export const ui = {
   hud: $('hud'), turn: $('turn'), msg: $('msg'), roll: $<HTMLButtonElement>('roll'),
+  choicesBar: $('choices-bar'),
   menu: $('menu'), win: $('win'), winText: $('win-text'), again: $('again'),
   startBtn: $<HTMLButtonElement>('start-btn'),
   quickSoloBtn: $<HTMLButtonElement>('quick-solo-btn'),
