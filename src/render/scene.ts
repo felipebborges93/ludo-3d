@@ -174,6 +174,7 @@ export class Scene3D {
   private shakeOffset = new THREE.Vector3();
   private focus = new THREE.Vector3();
   private zoomCamPos = new THREE.Vector3();
+  private initialCamPos = new THREE.Vector3(0, 16, 13);
   private dancing: THREE.Group[] = [];
   private confetti = new Confetti();
   private lastT = 0;
@@ -284,7 +285,9 @@ export class Scene3D {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.baseDist = w < h ? (w < 420 ? 32 : 28) : 23;
-    if (!this.isZoomed) this.camera.position.setLength(this.baseDist);
+    const baseDir = new THREE.Vector3(0, 16, 13).normalize();
+    this.initialCamPos.copy(baseDir).multiplyScalar(this.baseDist);
+    if (!this.isZoomed) this.camera.position.copy(this.initialCamPos);
     this.camera.updateProjectionMatrix();
   }
 
@@ -315,14 +318,13 @@ export class Scene3D {
     this.camera.position.sub(this.shakeOffset);
     this.controls.target.lerp(this.focus, 0.08);
 
-    // Dynamic zoom in/out: when zoomed, smoothly glide to in front of character; when unzoomed, return to orbital distance
+    // Dynamic zoom in/out:
+    // When zoomed: smoothly move camera close in front of character
+    // When unzoomed: smoothly glide camera back to exact initial starting position and target
     if (this.isZoomed) {
-      this.camera.position.lerp(this.zoomCamPos, 0.08);
+      this.camera.position.lerp(this.zoomCamPos, 0.09);
     } else {
-      const camDir = this.camera.position.clone().sub(this.controls.target).normalize();
-      const curDist = this.camera.position.distanceTo(this.controls.target);
-      const newDist = THREE.MathUtils.lerp(curDist, this.baseDist, 0.07);
-      this.camera.position.copy(this.controls.target).addScaledVector(camDir, newDist);
+      this.camera.position.lerp(this.initialCamPos, 0.08);
     }
 
     this.controls.update();
@@ -435,14 +437,14 @@ export class Scene3D {
       else if (e.type === 'tokenMoved') {
         mover = piece!;
         this.isZoomed = true;
-        // Position camera closer (distance ~3.6 units) and in front of the piece (Z + 3.2, Y + 1.8) facing character's face
-        this.zoomCamPos.set(piece!.position.x, piece!.position.y + 1.8, piece!.position.z + 3.2);
+        // Position camera closer (distance ~2.0 units) directly in front of the character's face
+        this.zoomCamPos.set(piece!.position.x, piece!.position.y + 1.0, piece!.position.z + 1.8);
         // Bananildo trips on a random hop now and then (cosmetic only).
         const trip = e.color === 'yellow' && Math.random() < 0.3 ? Math.floor(Math.random() * e.path.length) : -1;
         for (let i = 0; i < e.path.length; i++) {
           const dest = world(tokenCell(e.color, e.path[i], e.token));
           this.focus.set(dest.x, dest.y + 0.6, dest.z);
-          this.zoomCamPos.set(dest.x, dest.y + 1.8, dest.z + 3.2);
+          this.zoomCamPos.set(dest.x, dest.y + 1.0, dest.z + 1.8);
           await this.hop(piece!, dest);
           if (i === trip) {
             this.onSound?.('trip');
