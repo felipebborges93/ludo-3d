@@ -28,7 +28,6 @@ export const TEAM: Record<Color, { name: string; icon: string; css: string }> = 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 export const ui = {
   hud: $('hud'), turn: $('turn'), msg: $('msg'), roll: $<HTMLButtonElement>('roll'),
-  choicesBar: $('choices-bar'),
   menu: $('menu'), win: $('win'), winText: $('win-text'), again: $('again'),
   startBtn: $<HTMLButtonElement>('start-btn'),
   quickSoloBtn: $<HTMLButtonElement>('quick-solo-btn'),
@@ -53,6 +52,12 @@ export const ui = {
   lobbyPlayers: $('lobby-players'),
   lobbyWaitMsg: $('lobby-wait-msg'),
   lobbyStartBtn: $<HTMLButtonElement>('lobby-start-btn'),
+
+  // Cards UI
+  cardBanner: $('card-banner'),
+  cardsBar: $('cards-bar'),
+  cardsList: $('cards-list'),
+  gameLog: $('game-log'),
 
   // Timer
   timerBadge: $('timer-badge'),

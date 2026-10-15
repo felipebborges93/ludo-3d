@@ -11,12 +11,18 @@
     <button id="mute-btn" class="top-btn" title="Silenciar / Ativar Som">🔊</button>
     <canvas id="c"></canvas>
     
+    <div id="card-banner" class="card-banner" hidden></div>
+
     <div id="hud" hidden>
       <div id="timer-badge" hidden>⏱️ <span id="timer-sec">30</span>s</div>
       <div id="turn"></div>
       <div id="msg"></div>
-      <div id="choices-bar" class="row" hidden></div>
+      <div id="cards-bar" class="cards-bar" hidden>
+        <div class="cards-header">🎴 Suas Cartas:</div>
+        <div id="cards-list" class="cards-list"></div>
+      </div>
       <button id="roll">🎲 Rolar dado</button>
+      <div id="game-log" class="game-log"></div>
     </div>
 
     <div id="menu" class="overlay">

@@ -50,4 +50,39 @@ npm run build   # gera a pasta dist/ estática
 vercel          # ou conecte seu repositório Git diretamente no painel da Vercel
 ```
 
+## Sistema de Cartas (Sorte e Azar)
+Casas especiais no tabuleiro concedem cartas ao jogador que parar sobre elas:
+- **Casas de Sorte (losangos verdes):** Alta probabilidade de cartas de Defesa e Ajuda.
+- **Casas de Azar (losangos roxos):** Alta probabilidade de cartas de Ataque e Caos.
+
+### Regras Gerais:
+- **Mão:** Máximo de 3 cartas. A 4ª carta comprada é descartada com aviso no log.
+- **Uso:** Até 1 carta por turno.
+- **Pendência de Ataque:** Cartas de ataque só podem ser usadas contra jogadores à frente no progresso total. Se o líder tirar uma carta de ataque, ela é reembaralhada no baralho e outra é comprada.
+- **Reembaralhamento:** Ao esgotar a pilha de compra, a pilha de descarte é reembaralhada mantendo a conservação total das cartas e o determinismo por semente RNG.
+
+### Baralho de Cartas:
+1. **Defesa e Ajuda:**
+   - **Escudo de Bananildo:** Bloqueia a próxima captura contra o dono até o fim do seu próximo turno.
+   - **Dado Turbinado:** Permite escolher o valor do dado (ex: 4), consumindo a rolagem.
+   - **Atalho do Cocorina:** Avança uma peça em 4 casas (apenas no anel comum e para casa não segura).
+   - **Ressurreição:** Uma peça capturada volta à casa de saída (1x por partida).
+2. **Ataque Simples:**
+   - **Escorregão do Abelardo:** Uma peça adversária recua 3 casas (não antes da saída). O jogador perde o próximo movimento.
+   - **Tapete Mágico:** Troca de posição entre sua peça e uma adversária em casas comuns.
+   - **Gripe do Seu Gelinho:** O adversário escolhido não move peças no próximo turno dele.
+   - **Bolo que caiu:** Todas as peças do adversário escolhido voltam 1 casa.
+3. **Caos e Cancelamento:**
+   - **Troca de Chapéus:** Rotaciona as posições das peças entre todos os jogadores. Proibida se alguém estiver a menos de 5 casas da vitória.
+   - **Dança Obrigatória:** Faz o adversário pular a próxima rodada.
+   - **Contra-dança:** Cancela automaticamente uma carta de ataque usada contra você (não cancela caos).
+
+### Ajuste de Balanceamento e Simulação
+Os pesos das cartas estão configurados declarativamente em `src/game/cards/deck.config.ts`.
+Para rodar a simulação headless de 10.000 partidas com bots e gerar o relatório CSV:
+```bash
+npx tsx scripts/simulate.ts
+```
+O relatório é salvo em `scripts/balance_report.csv`.
+
 Veja `AGENTS.md` para a arquitetura completa do projeto.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apply, createGame, GameState, legalMoves } from './engine';
+import { apply, createGame, GameState, getSingleLegalMove, legalMoves } from './engine';
 import { DEFAULT_RULES, GOAL } from './rules';
 
 const roll = (s: GameState, v: number) => apply(s, { type: 'roll', forced: v });
@@ -69,5 +69,33 @@ describe('engine', () => {
     const a = apply(createGame(['red', 'blue'], 42), { type: 'roll' }).state.dice;
     const b = apply(createGame(['red', 'blue'], 42), { type: 'roll' }).state.dice;
     expect(a).toBe(b);
+  });
+
+  describe('single legal move detection', () => {
+    it('detects exactly one legal move', () => {
+      // Only token 0 is on the track (progress 10), other 3 in base; roll is 3 (not 6)
+      const s = game({ red: [10, -1, -1, -1], yellow: [-1, -1, -1, -1] });
+      const rolled = roll(s, 3).state;
+      expect(rolled.phase).toBe('move');
+      expect(legalMoves(rolled)).toEqual([0]);
+      expect(getSingleLegalMove(rolled)).toBe(0);
+    });
+
+    it('returns null and passes turn when there are no legal moves', () => {
+      // All tokens in base and roll is 2
+      const s = game({ red: [-1, -1, -1, -1], yellow: [-1, -1, -1, -1] });
+      const rolled = roll(s, 2).state;
+      expect(rolled.phase).toBe('roll'); // Turn already passed to next player
+      expect(getSingleLegalMove(rolled)).toBeNull();
+    });
+
+    it('returns null when two or more moves are available', () => {
+      // Two tokens on the board, roll is 4
+      const s = game({ red: [5, 12, -1, -1], yellow: [-1, -1, -1, -1] });
+      const rolled = roll(s, 4).state;
+      expect(rolled.phase).toBe('move');
+      expect(legalMoves(rolled)).toEqual([0, 1]);
+      expect(getSingleLegalMove(rolled)).toBeNull();
+    });
   });
 });

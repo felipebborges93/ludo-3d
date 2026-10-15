@@ -4,6 +4,7 @@ import type { GameEvent } from '../game/engine';
 import { BASE, Color, DEFAULT_RULES } from '../game/rules';
 import { BASE_ORIGIN, Cell, HOME_COL, TRACK, tokenCell } from './layout';
 import { buildCharacter, CHARACTERS, pickLine, TRIP_LINES } from './characters';
+import { CAMERA_CONFIG } from './camera.config';
 
 export const HEX: Record<Color, number> = { red: 0xe84a4a, green: 0x3dbb5c, yellow: 0xf5c518, blue: 0x3b7be8 };
 
@@ -180,6 +181,8 @@ export class Scene3D {
   private lastT = 0;
   private baseDist = 23;
   private isZoomed = false;
+  private cameraState: 'IDLE' | 'OVERVIEW' | 'APPROACH' | 'FOLLOW' | 'RETURN' = 'IDLE';
+  private cameraTargetPos = new THREE.Vector3(0, 16, 13);
   /** Called with screen coords when a character speaks; UI draws the bubble. */
   onSpeak?: (text: string, x: number, y: number) => void;
   /** Called when sound effects should play. Keeps render decoupled from audio. */
@@ -191,6 +194,7 @@ export class Scene3D {
     this.renderer.shadowMap.enabled = true;
     this.scene.background = new THREE.Color(0x2a1c14);
     this.camera.position.set(0, 16, 13);
+    this.cameraTargetPos.set(0, 16, 13);
     this.controls = new OrbitControls(this.camera, canvas);
     Object.assign(this.controls, { enablePan: false, minDistance: 10, maxDistance: 32, maxPolarAngle: Math.PI / 2.35, enableDamping: true });
 
@@ -249,6 +253,18 @@ export class Scene3D {
         star.scale.y = 0.3;
         star.position.copy(world(c, 0.03));
         this.scene.add(star);
+      } else if (DEFAULT_RULES.luckSquares?.includes(i)) {
+        // Clover / Luck icon (green octahedron / diamond)
+        const luckMarker = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), mat(0x22c55e));
+        luckMarker.scale.y = 0.4;
+        luckMarker.position.copy(world(c, 0.03));
+        this.scene.add(luckMarker);
+      } else if (DEFAULT_RULES.badLuckSquares?.includes(i)) {
+        // Hazard / Bad luck icon (purple / red diamond)
+        const badMarker = new THREE.Mesh(new THREE.DodecahedronGeometry(0.18), mat(0xa855f7));
+        badMarker.scale.y = 0.4;
+        badMarker.position.copy(world(c, 0.03));
+        this.scene.add(badMarker);
       }
     });
     for (const color of colors) {
@@ -287,7 +303,10 @@ export class Scene3D {
     this.baseDist = w < h ? (w < 420 ? 32 : 28) : 23;
     const baseDir = new THREE.Vector3(0, 16, 13).normalize();
     this.initialCamPos.copy(baseDir).multiplyScalar(this.baseDist);
-    if (!this.isZoomed) this.camera.position.copy(this.initialCamPos);
+    if (this.cameraState === 'IDLE' || this.cameraState === 'RETURN') {
+      this.cameraTargetPos.copy(this.initialCamPos);
+      this.camera.position.copy(this.initialCamPos);
+    }
     this.camera.updateProjectionMatrix();
   }
 
@@ -316,15 +335,34 @@ export class Scene3D {
     });
 
     this.camera.position.sub(this.shakeOffset);
-    this.controls.target.lerp(this.focus, 0.08);
 
-    // Dynamic zoom in/out:
-    // When zoomed: smoothly move camera close in front of character
-    // When unzoomed: smoothly glide camera back to exact initial starting position and target
-    if (this.isZoomed) {
-      this.camera.position.lerp(this.zoomCamPos, 0.09);
-    } else {
-      this.camera.position.lerp(this.initialCamPos, 0.08);
+    // Smooth focal target interpolation
+    this.controls.target.lerp(this.focus, CAMERA_CONFIG.targetLerpSpeed);
+
+    // Dynamic camera position lerping according to state machine
+    let currentLerpSpeed = CAMERA_CONFIG.lerpSpeedReturn;
+    switch (this.cameraState) {
+      case 'OVERVIEW':
+        currentLerpSpeed = CAMERA_CONFIG.lerpSpeedOverview;
+        break;
+      case 'APPROACH':
+        currentLerpSpeed = CAMERA_CONFIG.lerpSpeedApproach;
+        break;
+      case 'FOLLOW':
+        currentLerpSpeed = CAMERA_CONFIG.lerpSpeedFollow;
+        break;
+      case 'RETURN':
+      case 'IDLE':
+      default:
+        currentLerpSpeed = CAMERA_CONFIG.lerpSpeedReturn;
+        break;
+    }
+
+    this.camera.position.lerp(this.cameraTargetPos, currentLerpSpeed);
+
+    // Prevent camera from dipping under board
+    if (this.camera.position.y < 1.0) {
+      this.camera.position.y = 1.0;
     }
 
     this.controls.update();
@@ -372,6 +410,12 @@ export class Scene3D {
     return o ? (o.userData as { color: Color; token: number }) : null;
   }
 
+  /** Checks if the cursor is hovering a piece that has a legal move */
+  isPlayableToken(x: number, y: number, color: Color, legalTokens: number[]): boolean {
+    const hit = this.pick(x, y);
+    return !!(hit && hit.color === color && legalTokens.includes(hit.token));
+  }
+
   private speak(piece: THREE.Group, text: string) {
     if (!this.onSpeak) return;
     const v = piece.position.clone().setY(piece.position.y + 1.4).project(this.camera);
@@ -395,12 +439,12 @@ export class Scene3D {
   private async hop(piece: THREE.Group, to: THREE.Vector3) {
     this.onSound?.('hop');
     const from = piece.position.clone();
-    await tween(170, (t) => {
+    await tween(CAMERA_CONFIG.hopStepDuration, (t) => {
       piece.position.lerpVectors(from, to, t);
       piece.position.y = Math.sin(Math.PI * t) * 0.6;
       piece.scale.set(1, 1 + Math.sin(Math.PI * t) * 0.25, 1); // stretch in air
     });
-    await tween(80, (t) => piece.scale.set(1 + Math.sin(Math.PI * t) * 0.2, 1 - Math.sin(Math.PI * t) * 0.3, 1 + Math.sin(Math.PI * t) * 0.2));
+    await tween(CAMERA_CONFIG.hopSettleDuration, (t) => piece.scale.set(1 + Math.sin(Math.PI * t) * 0.2, 1 - Math.sin(Math.PI * t) * 0.3, 1 + Math.sin(Math.PI * t) * 0.2));
   }
 
   /** Tilt rig on an axis and back (trip, bow, faint). */
@@ -431,20 +475,42 @@ export class Scene3D {
   /** Plays game events in order. Render only reacts; it never decides rules. */
   async play(events: GameEvent[]) {
     let mover: THREE.Group | null = null;
+    let hadMovement = false;
+
     for (const e of events) {
       const piece = 'token' in e ? this.pieces.get(`${e.color}${e.token}`)! : null;
       if (e.type === 'diceRolled') await this.rollDice(e.value);
       else if (e.type === 'tokenMoved') {
         mover = piece!;
-        this.isZoomed = true;
-        // Position camera closer (distance ~2.0 units) directly in front of the character's face
-        this.zoomCamPos.set(piece!.position.x, piece!.position.y + 1.0, piece!.position.z + 1.8);
-        // Bananildo trips on a random hop now and then (cosmetic only).
+        hadMovement = true;
+
+        // Sequence Step 1: Rise to top-down overview showing whole board
+        this.cameraState = 'OVERVIEW';
+        this.focus.set(0, 0, 0);
+        this.cameraTargetPos.set(0, CAMERA_CONFIG.topDownHeight, 0.5);
+        await sleep(CAMERA_CONFIG.overviewHoldMs);
+
+        // Sequence Step 2: Approach selected piece closely
+        this.cameraState = 'APPROACH';
+        this.focus.set(piece!.position.x, piece!.position.y + CAMERA_CONFIG.focusOffsetY, piece!.position.z);
+        this.cameraTargetPos.set(
+          piece!.position.x,
+          piece!.position.y + CAMERA_CONFIG.zoomOffsetY,
+          piece!.position.z + CAMERA_CONFIG.zoomOffsetForward
+        );
+        await sleep(CAMERA_CONFIG.approachDurationMs);
+
+        // Sequence Step 3: Follow character hop-by-hop up close
+        this.cameraState = 'FOLLOW';
         const trip = e.color === 'yellow' && Math.random() < 0.3 ? Math.floor(Math.random() * e.path.length) : -1;
         for (let i = 0; i < e.path.length; i++) {
           const dest = world(tokenCell(e.color, e.path[i], e.token));
-          this.focus.set(dest.x, dest.y + 0.6, dest.z);
-          this.zoomCamPos.set(dest.x, dest.y + 1.0, dest.z + 1.8);
+          this.focus.set(dest.x, dest.y + CAMERA_CONFIG.focusOffsetY, dest.z);
+          this.cameraTargetPos.set(
+            dest.x,
+            dest.y + CAMERA_CONFIG.zoomOffsetY,
+            dest.z + CAMERA_CONFIG.zoomOffsetForward
+          );
           await this.hop(piece!, dest);
           if (i === trip) {
             this.onSound?.('trip');
@@ -453,9 +519,6 @@ export class Scene3D {
           }
         }
         if (e.path.length === 1 && e.path[0] === 0 && Math.random() < 0.5) this.speak(piece!, pickLine(CHARACTERS[e.color].lines.enter));
-        await sleep(350);
-        this.isZoomed = false;
-        this.focus.set(0, 0, 0);
       } else if (e.type === 'tokenCaptured') {
         await this.fly(piece!, world(tokenCell(e.color, BASE, e.token)));
         this.speak(piece!, pickLine(CHARACTERS[e.color].lines.captured));
@@ -480,7 +543,15 @@ export class Scene3D {
         this.speak(this.dancing[0], pickLine(CHARACTERS[e.color].lines.win));
       } else if (e.type === 'turnForfeited') await sleep(400);
     }
-    this.focus.set(0, 0, 0);
+
+    if (hadMovement) {
+      await sleep(CAMERA_CONFIG.returnWaitMs);
+      this.cameraState = 'RETURN';
+      this.focus.set(0, 0, 0);
+      this.cameraTargetPos.copy(this.initialCamPos);
+    } else {
+      this.focus.set(0, 0, 0);
+    }
   }
 }
 

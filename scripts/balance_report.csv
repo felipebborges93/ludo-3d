@@ -1,0 +1,12 @@
+card_id,obtained,used,winrate_when_used,winrate_when_not_used,diff_percentage_points,status
+escudo_bananildo,63878,62060,26.56%,18.76%,7.80,⚠️  > 5pp
+dado_turbinado,64080,62214,26.20%,19.56%,6.64,⚠️  > 5pp
+atalho_cocorina,63881,61240,26.17%,19.75%,6.42,⚠️  > 5pp
+ressurreicao,40933,24267,24.75%,25.38%,-0.63,✅ OK
+escorregao_abelardo,46188,39830,20.01%,33.05%,-13.03,⚠️  > 5pp
+tapete_magico,44944,37533,20.86%,31.02%,-10.15,⚠️  > 5pp
+gripe_gelinho,44296,41682,20.66%,32.05%,-11.39,⚠️  > 5pp
+bolo_caiu,36677,31419,21.68%,28.91%,-7.23,⚠️  > 5pp
+troca_chapeus,20644,15175,26.42%,24.26%,2.16,✅ OK
+danca_obrigatoria,21009,19990,27.79%,22.95%,4.83,✅ OK
+contra_danca,30622,0,25.00%,25.00%,0.00,✅ OK

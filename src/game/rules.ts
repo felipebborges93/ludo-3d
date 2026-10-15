@@ -20,6 +20,10 @@ export interface RulesConfig {
   finishGivesExtraTurn: boolean;
   exactRollToFinish: boolean;
   safeSquares: number[];
+  enableCards?: boolean;
+  luckSquares?: number[];
+  badLuckSquares?: number[];
+  maxHandSize?: number;
 }
 
 export const DEFAULT_RULES: RulesConfig = {
@@ -31,4 +35,9 @@ export const DEFAULT_RULES: RulesConfig = {
   finishGivesExtraTurn: true,
   exactRollToFinish: true,
   safeSquares: [0, 8, 13, 21, 26, 34, 39, 47],
+  enableCards: true,
+  // 4 luck squares and 4 bad luck squares evenly placed in track (0..51), excluding safeSquares
+  luckSquares: [4, 17, 30, 43],
+  badLuckSquares: [10, 23, 36, 49],
+  maxHandSize: 3,
 };

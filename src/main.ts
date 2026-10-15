@@ -1,13 +1,16 @@
 import './ui/style.css';
-import { apply, createGame, currentColor, GameEvent, GameState, legalMoves } from './game/engine';
+import { apply, createGame, currentColor, GameEvent, GameState, getSingleLegalMove, legalMoves } from './game/engine';
 import type { Color } from './game/rules';
 import { Scene3D } from './render/scene';
 import { cast, label, NEXT_PLAYER_TYPE, PLAYER_TYPE_LABELS, PlayerType, TEAM, ui } from './ui/hud';
 import { showBubble } from './ui/bubble';
-import { chooseMove } from './ai/bot';
+import { chooseCardAction, chooseMove } from './ai/bot';
 import { sound } from './audio/sound';
 import { net, RoomState } from './net/network';
 import { ACCESSORY_LABELS } from './render/characters';
+import { getCard } from './game/cards/deck.config';
+import { CAMERA_CONFIG } from './render/camera.config';
+import './game/cards/effects';
 
 const PLAYERS: Record<number, Color[]> = {
   2: ['red', 'yellow'],
@@ -20,6 +23,7 @@ let state: GameState | null = null;
 let busy = false;
 let isOnline = false;
 let botTimer: number | null = null;
+let autoPlayTimer: number | null = null;
 
 scene.onSpeak = showBubble;
 scene.onSound = (name) => {
@@ -67,6 +71,11 @@ function refresh(note = '') {
   if (!state) return;
   const c = currentColor(state);
 
+  if (autoPlayTimer) {
+    clearTimeout(autoPlayTimer);
+    autoPlayTimer = null;
+  }
+
   if (isOnline) {
     const isMyTurn = c === net.myColor;
     const playerInfo = net.colors[c];
@@ -75,7 +84,16 @@ function refresh(note = '') {
     ui.roll.disabled = busy || state.phase !== 'roll' || !isMyTurn;
     const moves = busy || !isMyTurn ? [] : legalMoves(state);
     scene.highlight(c, moves);
-    renderChoices(c, moves);
+
+    // Auto-play when exactly one option exists
+    if (!busy && isMyTurn && state.phase === 'move') {
+      const single = getSingleLegalMove(state);
+      if (single !== null) {
+        autoPlayTimer = window.setTimeout(() => {
+          act({ type: 'move', token: single });
+        }, CAMERA_CONFIG.autoPlayDelayMs);
+      }
+    }
     return;
   }
 
@@ -83,66 +101,182 @@ function refresh(note = '') {
   const type = slotTypes[c];
   const isBot = type !== 'human';
   ui.turn.innerHTML = `Vez de ${label(c)} ${isBot ? `(${PLAYER_TYPE_LABELS[type]})` : ''}`;
-  ui.msg.innerHTML = note || (state.phase === 'move' ? (isBot ? 'Pensando...' : `Tirou ${state.dice}. Escolha a peça:`) : (isBot ? 'Rolando dado...' : ''));
+  ui.msg.innerHTML = note || (state.phase === 'move' ? (isBot ? 'Pensando...' : `Tirou ${state.dice}. Toque na peça para mover:`) : (isBot ? 'Rolando dado...' : ''));
   ui.roll.disabled = busy || state.phase !== 'roll' || isBot;
 
   const moves = busy || isBot ? [] : legalMoves(state);
   scene.highlight(c, moves);
-  renderChoices(c, moves);
-}
+  renderCardsHand(c, isBot);
 
-function renderChoices(color: Color, moves: number[]) {
-  if (!state || state.phase !== 'move' || !moves.length) {
-    ui.choicesBar.hidden = true;
-    ui.choicesBar.innerHTML = '';
-    return;
-  }
-  ui.choicesBar.hidden = false;
-  ui.choicesBar.innerHTML = '';
-  for (const tok of moves) {
-    const btn = document.createElement('button');
-    btn.className = 'choice-btn';
-    const acc = ACCESSORY_LABELS[tok] || `Peça ${tok + 1}`;
-    const pos = state.tokens[color][tok];
-    const loc = pos === -1 ? 'Sair da base' : pos >= 52 ? `Final ${pos - 51}` : `Casa ${pos}`;
-    btn.innerHTML = `${acc} <small>(${loc})</small>`;
-    btn.onclick = () => {
-      sound.click();
-      act({ type: 'move', token: tok });
-    };
-    ui.choicesBar.appendChild(btn);
+  // Auto-play for human player when exactly one option exists
+  if (!busy && !isBot && state.phase === 'move') {
+    const single = getSingleLegalMove(state);
+    if (single !== null) {
+      autoPlayTimer = window.setTimeout(() => {
+        act({ type: 'move', token: single });
+      }, CAMERA_CONFIG.autoPlayDelayMs);
+    }
   }
 }
 
-function describe(events: GameEvent[]): string {
-  const parts: string[] = [];
-  for (const e of events) {
-    if (e.type === 'tokenCaptured') parts.push(`${label(e.by)} capturou ${label(e.color)}!`);
-    if (e.type === 'turnForfeited') parts.push(`Três 6 seguidos! ${label(e.color)} perdeu a vez.`);
-    if (e.type === 'tokenFinished') parts.push(`${label(e.color)} chegou ao destino!`);
+  function describeEvents(events: GameEvent[]): string {
+    const parts: string[] = [];
+    for (const e of events) {
+      if (e.type === 'tokenCaptured') parts.push(`${label(e.by)} capturou ${label(e.color)}!`);
+      if (e.type === 'turnForfeited') parts.push(`Três 6 seguidos! ${label(e.color)} perdeu a vez.`);
+      if (e.type === 'tokenFinished') parts.push(`${label(e.color)} chegou ao destino!`);
+    }
+    const rolled = events.find((e) => e.type === 'diceRolled');
+    if (rolled && events.some((e) => e.type === 'turnChanged') && !parts.length) parts.push(`Tirou ${rolled.value}. Sem jogadas.`);
+    return parts.join(' ');
   }
-  const rolled = events.find((e) => e.type === 'diceRolled');
-  if (rolled && events.some((e) => e.type === 'turnChanged') && !parts.length) parts.push(`Tirou ${rolled.value}. Sem jogadas.`);
-  return parts.join(' ');
-}
 
-function scheduleBotTurn() {
-  if (isOnline || botTimer) clearTimeout(botTimer!);
-  if (!state || busy || state.winner) return;
-
-  const c = currentColor(state);
-  const type = slotTypes[c];
-  if (type === 'human') return;
-
-  if (state.phase === 'roll') {
-    botTimer = window.setTimeout(() => act({ type: 'roll' }), 700);
-  } else if (state.phase === 'move') {
-    botTimer = window.setTimeout(() => {
-      const best = chooseMove(state!, type);
-      if (best >= 0) act({ type: 'move', token: best });
-    }, 750);
+  function appendLog(text: string) {
+    if (!ui.gameLog) return;
+    const p = document.createElement('p');
+    p.innerHTML = text;
+    ui.gameLog.appendChild(p);
+    ui.gameLog.scrollTop = ui.gameLog.scrollHeight;
   }
-}
+
+  function showCardBanner(text: string) {
+    if (!ui.cardBanner) return;
+    ui.cardBanner.innerHTML = text;
+    ui.cardBanner.hidden = false;
+    setTimeout(() => {
+      ui.cardBanner.hidden = true;
+    }, 2800);
+  }
+
+  function renderCardsHand(color: Color, isBot: boolean) {
+    if (!ui.cardsBar || !ui.cardsList) return;
+    if (!state || isBot) {
+      ui.cardsBar.hidden = true;
+      ui.cardsList.innerHTML = '';
+      return;
+    }
+
+    const hand = state.hands[color] || [];
+    if (hand.length === 0) {
+      ui.cardsBar.hidden = true;
+      ui.cardsList.innerHTML = '';
+      return;
+    }
+
+    ui.cardsBar.hidden = false;
+    ui.cardsList.innerHTML = '';
+
+    for (const cardId of hand) {
+      const card = getCard(cardId);
+      if (!card) continue;
+
+      const cardEl = document.createElement('div');
+      cardEl.className = `card-item type-${card.type}`;
+      cardEl.innerHTML = `
+        <div class="card-title">${card.name}</div>
+        <div class="card-desc">${card.shortText}</div>
+        <button class="card-use-btn">Usar</button>
+      `;
+
+      const btn = cardEl.querySelector('button')!;
+      const canUse = !busy && !state.cardPlayedThisTurn && card.canPlay(state, color);
+      btn.disabled = !canUse;
+
+      btn.onclick = () => {
+        sound.click();
+        handleHumanCardPlay(color, cardId);
+      };
+
+      ui.cardsList.appendChild(cardEl);
+    }
+  }
+
+  function handleHumanCardPlay(color: Color, cardId: string) {
+    if (!state) return;
+    const card = getCard(cardId);
+    if (!card) return;
+
+    // Dado Turbinado
+    if (cardId === 'dado_turbinado') {
+      act({ type: 'playCard', cardId, chosenValue: 4 });
+      return;
+    }
+
+    // Atalho do Cocorina (find first valid piece or token 0)
+    if (cardId === 'atalho_cocorina') {
+      for (let i = 0; i < state.tokens[color].length; i++) {
+        if (card.canPlay(state, color, { tokenIndex: i })) {
+          act({ type: 'playCard', cardId, tokenIndex: i });
+          return;
+        }
+      }
+    }
+
+    // Ataque com alvo (pick opponent ahead)
+    if (card.type === 'ataque' || cardId === 'danca_obrigatoria') {
+      let maxP = -1;
+      let targetP: Color | null = null;
+      for (const op of state.players) {
+        if (op === color) continue;
+        const prog = state.tokens[op].reduce((acc, p) => acc + (p >= 0 ? p : 0), 0);
+        if (prog > maxP) {
+          maxP = prog;
+          targetP = op;
+        }
+      }
+
+      if (targetP) {
+        if (cardId === 'escorregao_abelardo') {
+          for (let i = 0; i < state.tokens[targetP].length; i++) {
+            if (card.canPlay(state, color, { targetPlayer: targetP, targetTokenIndex: i })) {
+              act({ type: 'playCard', cardId, targetPlayer: targetP, targetTokenIndex: i });
+              return;
+            }
+          }
+        }
+        if (cardId === 'tapete_magico') {
+          for (let mi = 0; mi < state.tokens[color].length; mi++) {
+            for (let ti = 0; ti < state.tokens[targetP].length; ti++) {
+              if (card.canPlay(state, color, { tokenIndex: mi, targetPlayer: targetP, targetTokenIndex: ti })) {
+                act({ type: 'playCard', cardId, tokenIndex: mi, targetPlayer: targetP, targetTokenIndex: ti });
+                return;
+              }
+            }
+          }
+        }
+        act({ type: 'playCard', cardId, targetPlayer: targetP });
+        return;
+      }
+    }
+
+    // Default usage
+    act({ type: 'playCard', cardId });
+  }
+
+  function scheduleBotTurn() {
+    if (isOnline || botTimer) clearTimeout(botTimer!);
+    if (!state || busy || state.winner) return;
+
+    const c = currentColor(state);
+    const type = slotTypes[c];
+    if (type === 'human') return;
+
+    // Check if bot can and wants to play a card
+    const cardAction = chooseCardAction(state);
+    if (cardAction) {
+      botTimer = window.setTimeout(() => act({ type: 'playCard', ...cardAction }), 600);
+      return;
+    }
+
+    if (state.phase === 'roll') {
+      botTimer = window.setTimeout(() => act({ type: 'roll' }), 700);
+    } else if (state.phase === 'move') {
+      botTimer = window.setTimeout(() => {
+        const best = chooseMove(state!, type);
+        if (best >= 0) act({ type: 'move', token: best });
+      }, 750);
+    }
+  }
 
 async function act(action: Parameters<typeof apply>[1]) {
   if (isOnline) {
@@ -158,6 +292,25 @@ async function act(action: Parameters<typeof apply>[1]) {
   state = res.state;
   busy = false;
 
+  for (const e of res.events) {
+    if (e.type === 'cardDrawn') {
+      const card = getCard(e.cardId);
+      appendLog(`🎴 <b>${label(e.color)}</b> tirou uma carta: <b>${card?.name || e.cardId}</b>`);
+    } else if (e.type === 'cardPlayed') {
+      const card = getCard(e.cardId);
+      if (card) {
+        showCardBanner(`🎴 ${card.name}<br><small style="font-size:0.8rem;font-weight:normal">${card.shortText}</small>`);
+        appendLog(`⚡ <b>${label(e.color)}</b> usou <b>${card.name}</b>!`);
+      }
+    } else if (e.type === 'cardEffectApplied') {
+      appendLog(`✨ ${e.description}`);
+    } else if (e.type === 'cardCancelled') {
+      appendLog(`🛡️ <b>${label(e.by)}</b> cancelou o ataque com <b>Contra-dança</b>!`);
+    } else if (e.type === 'cardDiscarded' && e.reason === 'hand_full') {
+      appendLog(`🗑️ <b>${label(e.color)}</b> já tem 3 cartas! A carta foi descartada.`);
+    }
+  }
+
   if (state.winner) {
     ui.hud.hidden = true;
     ui.winText.innerHTML = `${label(state.winner)} venceu!`;
@@ -165,7 +318,7 @@ async function act(action: Parameters<typeof apply>[1]) {
     return;
   }
 
-  refresh(describe(res.events));
+  refresh(describeEvents(res.events));
   scheduleBotTurn();
 }
 
@@ -240,7 +393,7 @@ net.onSync = async (nextState, events) => {
     return;
   }
 
-  refresh(describe(events));
+  refresh(describeEvents(events));
 
   // Auto-play single move for online player
   if (state.phase === 'move' && currentColor(state) === net.myColor) {
@@ -392,6 +545,21 @@ addEventListener('keydown', (e) => {
 let down = { x: 0, y: 0 };
 const canvas = document.getElementById('c')!;
 canvas.addEventListener('pointerdown', (e) => (down = { x: e.clientX, y: e.clientY }));
+canvas.addEventListener('pointermove', (e) => {
+  if (!state || busy || state.phase !== 'move') {
+    canvas.style.cursor = 'default';
+    return;
+  }
+  const c = currentColor(state);
+  const isHumanTurn = isOnline ? c === net.myColor : slotTypes[c] === 'human';
+  if (!isHumanTurn) {
+    canvas.style.cursor = 'default';
+    return;
+  }
+  const moves = legalMoves(state);
+  canvas.style.cursor = scene.isPlayableToken(e.clientX, e.clientY, c, moves) ? 'pointer' : 'default';
+});
+
 canvas.addEventListener('pointerup', (e) => {
   if (!state || busy || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 24) return;
   const c = currentColor(state);
