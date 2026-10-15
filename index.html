@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#bfe6ff" />
+    <title>Ludo 3D</title>
+  </head>
+  <body>
+    <button id="mute-btn" class="top-btn" title="Silenciar / Ativar Som">🔊</button>
+    <canvas id="c"></canvas>
+    
+    <div id="hud" hidden>
+      <div id="timer-badge" hidden>⏱️ <span id="timer-sec">30</span>s</div>
+      <div id="turn"></div>
+      <div id="msg"></div>
+      <button id="roll">🎲 Rolar dado</button>
+    </div>
+
+    <div id="menu" class="overlay">
+      <h1>Ludo 3D</h1>
+      <div id="cast" class="cast"></div>
+
+      <!-- Mode selection tabs -->
+      <div class="row mode-tabs">
+        <button id="tab-local" class="tab-btn active">🏠 Local & Bots</button>
+        <button id="tab-online" class="tab-btn">🌐 Online</button>
+      </div>
+
+      <!-- Local Panel -->
+      <div id="panel-local" class="menu-box">
+        <p class="menu-label">Número de jogadores:</p>
+        <div class="row n-select">
+          <button data-n="2" class="n-btn">2</button>
+          <button data-n="3" class="n-btn">3</button>
+          <button data-n="4" class="n-btn active">4</button>
+        </div>
+        <div id="player-slots" class="slots-container"></div>
+        <div class="row actions-row">
+          <button id="start-btn">🎲 Jogar</button>
+          <button id="quick-solo-btn" class="secondary-btn">🤖 1 vs Bots</button>
+        </div>
+      </div>
+
+      <!-- Online Panel -->
+      <div id="panel-online" class="menu-box" hidden>
+        <div id="online-setup">
+          <div class="online-box">
+            <button id="create-room-btn" class="full-btn">🚀 Criar Nova Sala</button>
+          </div>
+          <div class="divider">ou</div>
+          <div class="row join-row">
+            <input type="text" id="room-code-input" placeholder="CÓDIGO (ex: ABCD)" maxlength="6" autocomplete="off" />
+            <button id="join-room-btn">Entrar</button>
+          </div>
+          <div id="online-error" class="error-msg" hidden></div>
+        </div>
+
+        <!-- Online Lobby inside Panel -->
+        <div id="online-lobby" hidden>
+          <div class="lobby-header">
+            <div>Sala: <b id="lobby-code">----</b></div>
+            <button id="copy-link-btn" class="mini-btn">📋 Copiar Link</button>
+          </div>
+          <div id="lobby-players" class="slots-container"></div>
+          <p id="lobby-wait-msg" class="sub-msg">Aguardando outros jogadores...</p>
+          <button id="lobby-start-btn" class="full-btn" hidden>🎲 Iniciar Partida</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="win" class="overlay" hidden>
+      <h1 id="win-text"></h1>
+      <button id="again">Jogar de novo</button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
