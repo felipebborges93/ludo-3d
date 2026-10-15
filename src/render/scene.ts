@@ -38,7 +38,27 @@ const baseGeo = new THREE.CylinderGeometry(0.32, 0.34, 0.06, 16);
 const iconGeos = new Map<Color, THREE.BufferGeometry>();
 const iconMat = mat(0xffffff);
 
-/** Piece = team-colored base + character rig + floating shape icon (colorblind support). */
+/** Procedural dotted circle texture */
+function createDottedRingTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d')!;
+  ctx.clearRect(0, 0, 256, 256);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 14;
+  ctx.setLineDash([20, 24]);
+  ctx.beginPath();
+  ctx.arc(128, 128, 105, 0, Math.PI * 2);
+  ctx.stroke();
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+let sharedDottedRingTex: THREE.CanvasTexture | null = null;
+const ringPlaneGeo = new THREE.PlaneGeometry(1.2, 1.2);
+
+/** Piece = team-colored base + character rig + floating shape icon (colorblind support) + dotted selection ring. */
 function createPiece(color: Color, variant: number): THREE.Group {
   const g = new THREE.Group();
   const base = new THREE.Mesh(baseGeo, mat(HEX[color]));
@@ -48,14 +68,29 @@ function createPiece(color: Color, variant: number): THREE.Group {
   icon.position.y = 1.35;
   icon.scale.setScalar(0.7);
   const rig = buildCharacter(color, variant);
+
+  if (!sharedDottedRingTex) sharedDottedRingTex = createDottedRingTexture();
+  const ringMat = new THREE.MeshBasicMaterial({
+    map: sharedDottedRingTex,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const selectionRing = new THREE.Mesh(ringPlaneGeo, ringMat);
+  selectionRing.rotation.x = -Math.PI / 2;
+  selectionRing.position.y = 0.04;
+  selectionRing.visible = false;
+
   // Invisible larger hit cylinder for easy tapping on mobile/desktop
   const hitMesh = new THREE.Mesh(
     new THREE.CylinderGeometry(0.55, 0.55, 1.8, 8),
     new THREE.MeshBasicMaterial({ visible: false })
   );
   hitMesh.position.y = 0.9;
-  g.add(base, rig, icon, hitMesh);
+  g.add(base, rig, icon, selectionRing, hitMesh);
   g.userData.rig = rig;
+  g.userData.selectionRing = selectionRing;
   return g;
 }
 
@@ -209,7 +244,13 @@ export class Scene3D {
         rig.scale.y = 1 + Math.sin(t / 320 + ph) * 0.03;
       }
     }
-    this.highlighted.forEach((p) => (p.position.y = 0.15 + Math.abs(Math.sin(t / 200)) * 0.25));
+    this.highlighted.forEach((p) => {
+      p.position.y = 0.15 + Math.abs(Math.sin(t / 200)) * 0.25;
+      const ring: THREE.Mesh | undefined = p.userData.selectionRing;
+      if (ring) {
+        ring.rotation.z = (t / 600) % (Math.PI * 2);
+      }
+    });
 
     this.camera.position.sub(this.shakeOffset);
     this.controls.target.lerp(this.focus, 0.07);
@@ -246,8 +287,15 @@ export class Scene3D {
   }
 
   highlight(color: Color | null, tokens: number[] = []) {
-    this.highlighted.forEach((p) => (p.position.y = 0));
-    this.highlighted = tokens.map((i) => this.pieces.get(`${color}${i}`)!);
+    this.highlighted.forEach((p) => {
+      p.position.y = 0;
+      if (p.userData.selectionRing) p.userData.selectionRing.visible = false;
+    });
+    this.highlighted = tokens.map((i) => {
+      const piece = this.pieces.get(`${color}${i}`)!;
+      if (piece?.userData.selectionRing) piece.userData.selectionRing.visible = true;
+      return piece;
+    }).filter(Boolean);
   }
 
   /** Returns the token under the screen point, if any. */
