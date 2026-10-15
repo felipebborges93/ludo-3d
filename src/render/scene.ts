@@ -116,6 +116,52 @@ const DICE_UP: Record<number, [number, number]> = {
   1: [0, 0], 6: [Math.PI, 0], 2: [-Math.PI / 2, 0], 5: [Math.PI / 2, 0], 3: [0, Math.PI / 2], 4: [0, -Math.PI / 2],
 };
 
+function createWoodTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 512;
+  const ctx = c.getContext('2d')!;
+
+  // Warm wood base
+  ctx.fillStyle = '#b87c44';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Planks
+  const plankHeight = 64;
+  for (let y = 0; y < 512; y += plankHeight) {
+    // Subtle plank color variance
+    const shade = (Math.random() - 0.5) * 15;
+    ctx.fillStyle = `rgba(${Math.floor(184 + shade)}, ${Math.floor(124 + shade * 0.7)}, ${Math.floor(68 + shade * 0.4)}, 0.4)`;
+    ctx.fillRect(0, y, 512, plankHeight);
+
+    // Plank seam lines
+    ctx.strokeStyle = 'rgba(70, 40, 18, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(512, y);
+    ctx.stroke();
+
+    // Wood grain streaks
+    for (let i = 0; i < 18; i++) {
+      const gy = y + Math.random() * plankHeight;
+      ctx.strokeStyle = 'rgba(95, 52, 22, 0.12)';
+      ctx.lineWidth = 1 + Math.random() * 2;
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.bezierCurveTo(170, gy + (Math.random() - 0.5) * 6, 340, gy + (Math.random() - 0.5) * 6, 512, gy);
+      ctx.stroke();
+    }
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(8, 8);
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export class Scene3D {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -127,6 +173,7 @@ export class Scene3D {
   private shake = 0;
   private shakeOffset = new THREE.Vector3();
   private focus = new THREE.Vector3();
+  private zoomCamPos = new THREE.Vector3();
   private dancing: THREE.Group[] = [];
   private confetti = new Confetti();
   private lastT = 0;
@@ -141,14 +188,14 @@ export class Scene3D {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
-    this.scene.background = new THREE.Color(0xbfe6ff);
+    this.scene.background = new THREE.Color(0x2a1c14);
     this.camera.position.set(0, 16, 13);
     this.controls = new OrbitControls(this.camera, canvas);
     Object.assign(this.controls, { enablePan: false, minDistance: 10, maxDistance: 32, maxPolarAngle: Math.PI / 2.35, enableDamping: true });
 
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.6));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(6, 14, 8);
+    this.scene.add(new THREE.HemisphereLight(0xfff1e0, 0x5a4030, 1.8));
+    const sun = new THREE.DirectionalLight(0xfffaed, 1.8);
+    sun.position.set(6, 15, 8);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
     Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10 });
@@ -166,10 +213,23 @@ export class Scene3D {
   }
 
   private buildBoard() {
-    const table = new THREE.Mesh(new THREE.BoxGeometry(16, 0.4, 16), mat(0xc58b52));
-    table.position.y = -0.3;
+    // Large tabletop taking up the entire background view
+    const woodTex = createWoodTexture();
+    const tableMat = new THREE.MeshStandardMaterial({
+      map: woodTex,
+      roughness: 0.65,
+      metalness: 0.05,
+    });
+    const table = new THREE.Mesh(new THREE.BoxGeometry(70, 0.6, 70), tableMat);
+    table.position.y = -0.4;
     table.receiveShadow = true;
     this.scene.add(table);
+
+    // Board wood frame/border
+    const boardBorder = new THREE.Mesh(new THREE.BoxGeometry(16, 0.25, 16), mat(0x945f34));
+    boardBorder.position.y = -0.15;
+    boardBorder.receiveShadow = true;
+    this.scene.add(boardBorder);
 
     const tileGeo = new THREE.BoxGeometry(0.94, 0.1, 0.94);
     const tile = (c: Cell, color: number) => {
@@ -253,14 +313,17 @@ export class Scene3D {
     });
 
     this.camera.position.sub(this.shakeOffset);
-    this.controls.target.lerp(this.focus, 0.07);
+    this.controls.target.lerp(this.focus, 0.08);
 
-    // Dynamic zoom in/out with smooth lerp
-    const targetDist = this.isZoomed ? 12 : this.baseDist;
-    const camDir = this.camera.position.clone().sub(this.controls.target).normalize();
-    const curDist = this.camera.position.distanceTo(this.controls.target);
-    const newDist = THREE.MathUtils.lerp(curDist, targetDist, 0.07);
-    this.camera.position.copy(this.controls.target).addScaledVector(camDir, newDist);
+    // Dynamic zoom in/out: when zoomed, smoothly glide to in front of character; when unzoomed, return to orbital distance
+    if (this.isZoomed) {
+      this.camera.position.lerp(this.zoomCamPos, 0.08);
+    } else {
+      const camDir = this.camera.position.clone().sub(this.controls.target).normalize();
+      const curDist = this.camera.position.distanceTo(this.controls.target);
+      const newDist = THREE.MathUtils.lerp(curDist, this.baseDist, 0.07);
+      this.camera.position.copy(this.controls.target).addScaledVector(camDir, newDist);
+    }
 
     this.controls.update();
     this.shake = Math.max(0, this.shake - dt);
@@ -372,11 +435,14 @@ export class Scene3D {
       else if (e.type === 'tokenMoved') {
         mover = piece!;
         this.isZoomed = true;
+        // Position camera closer (distance ~3.6 units) and in front of the piece (Z + 3.2, Y + 1.8) facing character's face
+        this.zoomCamPos.set(piece!.position.x, piece!.position.y + 1.8, piece!.position.z + 3.2);
         // Bananildo trips on a random hop now and then (cosmetic only).
         const trip = e.color === 'yellow' && Math.random() < 0.3 ? Math.floor(Math.random() * e.path.length) : -1;
         for (let i = 0; i < e.path.length; i++) {
           const dest = world(tokenCell(e.color, e.path[i], e.token));
-          this.focus.copy(dest);
+          this.focus.set(dest.x, dest.y + 0.6, dest.z);
+          this.zoomCamPos.set(dest.x, dest.y + 1.8, dest.z + 3.2);
           await this.hop(piece!, dest);
           if (i === trip) {
             this.onSound?.('trip');
