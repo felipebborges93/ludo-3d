@@ -7,7 +7,7 @@ import { showBubble } from './ui/bubble';
 import { chooseCardAction, chooseMove } from './ai/bot';
 import { sound } from './audio/sound';
 import { net, RoomState } from './net/network';
-import { ACCESSORY_LABELS } from './render/characters';
+import { ACCESSORY_LABELS, CHARACTERS } from './render/characters';
 import { getCard } from './game/cards/deck.config';
 import { CAMERA_CONFIG } from './render/camera.config';
 import './game/cards/effects';
@@ -49,10 +49,18 @@ function renderLocalSlots() {
   const activeColors = PLAYERS[selectedN];
   ui.slotsContainer.innerHTML = '';
   for (const c of activeColors) {
+    const t = TEAM[c];
     const row = document.createElement('div');
-    row.className = 'slot-row';
+    row.className = 'slot-row mascot-slot-card';
+    row.style.borderLeft = `5px solid ${t.css}`;
     row.innerHTML = `
-      <span class="slot-label" style="color:${TEAM[c].css}">${TEAM[c].icon} ${TEAM[c].name}</span>
+      <div class="mascot-slot-info">
+        <span class="mascot-slot-avatar">${t.avatar}</span>
+        <div class="mascot-slot-names">
+          <div class="mascot-slot-name" style="color:${t.css}">${t.mascot}</div>
+          <div class="mascot-slot-sub">${t.title}</div>
+        </div>
+      </div>
       <button class="slot-btn" data-color="${c}">${PLAYER_TYPE_LABELS[slotTypes[c]]}</button>
     `;
     const btn = row.querySelector('button')!;
@@ -176,15 +184,37 @@ function refresh(note = '') {
     };
   }
 
+  const CARD_ICONS: Record<string, string> = {
+    escudo_bananildo: '🛡️',
+    dado_turbinado: '⚡',
+    atalho_cocorina: '🚀',
+    ressurreicao: '✨',
+    escorregao_abelardo: '🍌',
+    tapete_magico: '🪄',
+    gripe_gelinho: '🥶',
+    bolo_caiu: '🎂',
+    troca_chapeus: '🎩',
+    danca_obrigatoria: '💃',
+    contra_danca: '🪞',
+  };
+
+  const TYPE_DEFAULT_ICONS: Record<string, string> = {
+    defesa: '🛡️',
+    ajuda: '🌟',
+    ataque: '⚔️',
+    caos: '🌀',
+  };
+
   function openCardInspect(color: Color, cardId: string) {
     const card = getCard(cardId);
     if (!card || !ui.cardInspectModal) return;
 
     inspectingCardId = cardId;
     inspectingCardColor = color;
+    const icon = CARD_ICONS[cardId] || TYPE_DEFAULT_ICONS[card.type] || '🎴';
 
     if (ui.modalCardBadge) {
-      ui.modalCardBadge.textContent = card.type.toUpperCase();
+      ui.modalCardBadge.textContent = `${icon} ${card.type.toUpperCase()}`;
       ui.modalCardBadge.className = `modal-card-badge type-${card.type}`;
     }
     if (ui.modalCardTitle) ui.modalCardTitle.textContent = card.name;
@@ -232,8 +262,13 @@ function refresh(note = '') {
       cardEl.style.transform = `rotate(${angle}deg)`;
       cardEl.style.zIndex = `${index + 1}`;
 
+      const icon = CARD_ICONS[cardId] || TYPE_DEFAULT_ICONS[card.type] || '🎴';
+
       cardEl.innerHTML = `
-        <span class="card-fan-tag">${card.type.slice(0, 3)}</span>
+        <div class="card-fan-top">
+          <span class="card-fan-tag">${card.type.slice(0, 3)}</span>
+          <span class="card-fan-icon">${icon}</span>
+        </div>
         <div class="card-fan-title">${card.name}</div>
       `;
 
@@ -368,8 +403,13 @@ async function act(action: Parameters<typeof apply>[1]) {
 
   if (state.winner) {
     ui.hud.hidden = true;
-    ui.winText.innerHTML = `${label(state.winner)} venceu!`;
-    setTimeout(() => (ui.win.hidden = false), 2500);
+    const w = state.winner;
+    const t = TEAM[w];
+    const winLine = CHARACTERS[w].lines.win[0] || 'Venci!';
+    if (ui.winAvatar) ui.winAvatar.textContent = t.avatar;
+    ui.winText.innerHTML = `${t.mascot} Venceu!`;
+    if (ui.winSub) ui.winSub.innerHTML = `"${winLine}"<br><small style="color:${t.css};font-weight:700">${t.title}</small>`;
+    setTimeout(() => (ui.win.hidden = false), 2200);
     return;
   }
 
@@ -587,11 +627,42 @@ ui.roll.onclick = () => {
 };
 
 addEventListener('keydown', (e) => {
-  if (e.code === 'Space' && state?.phase === 'roll') {
-    if (isOnline) {
-      if (currentColor(state) === net.myColor) act({ type: 'roll' });
-    } else if (slotTypes[currentColor(state)] === 'human') {
-      act({ type: 'roll' });
+  if (!state || busy) return;
+  const c = currentColor(state);
+  const isHumanTurn = isOnline ? c === net.myColor : slotTypes[c] === 'human';
+
+  // Space: Rolar o dado
+  if (e.code === 'Space' && state.phase === 'roll' && isHumanTurn) {
+    e.preventDefault();
+    act({ type: 'roll' });
+    return;
+  }
+
+  // Escape: Fechar modal de inspeção de carta
+  if (e.code === 'Escape' && ui.cardInspectModal && !ui.cardInspectModal.hidden) {
+    e.preventDefault();
+    closeCardInspectModal();
+    return;
+  }
+
+  // Tecla C: Abrir/inspecionar primeira carta disponível da mão
+  if (e.key.toLowerCase() === 'c' && isHumanTurn && state.hands[c]?.length) {
+    e.preventDefault();
+    if (ui.cardInspectModal && !ui.cardInspectModal.hidden) {
+      closeCardInspectModal();
+    } else {
+      openCardInspect(c, state.hands[c][0]);
+    }
+    return;
+  }
+
+  // Teclas 1, 2, 3, 4: Mover peça diretamente se for legal
+  if (['1', '2', '3', '4'].includes(e.key) && state.phase === 'move' && isHumanTurn) {
+    const tokenIndex = parseInt(e.key, 10) - 1;
+    const moves = legalMoves(state);
+    if (moves.includes(tokenIndex)) {
+      e.preventDefault();
+      act({ type: 'move', token: tokenIndex });
     }
   }
 });

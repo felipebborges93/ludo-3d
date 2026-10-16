@@ -13,18 +13,26 @@
     
     <div id="card-banner" class="card-banner" hidden></div>
 
-    <div id="hud" hidden>
-      <div id="timer-badge" hidden>⏱️ <span id="timer-sec">30</span>s</div>
-      <div id="turn"></div>
-      <div id="msg"></div>
-      <button id="roll">🎲 Rolar dado</button>
-      <div id="game-log" class="game-log"></div>
-    </div>
+    <!-- Cockpit de Ação Unificada (Base da Tela) -->
+    <div id="hud" class="action-cockpit" hidden>
+      <!-- Top info bar (Turno & Cronômetro) -->
+      <div class="cockpit-status-row">
+        <div id="timer-badge" class="timer-badge" hidden>⏱️ <span id="timer-sec">30</span>s</div>
+        <div id="turn" class="turn-badge"></div>
+        <div id="msg" class="msg-badge"></div>
+      </div>
 
-    <!-- Dock compacto em leque de cartas na lateral inferior -->
-    <div id="cards-dock" class="cards-dock" hidden>
-      <div class="cards-dock-label">Cartas</div>
-      <div id="cards-fan" class="cards-fan"></div>
+      <!-- Controls row (Dado central + Gatilho/Dock de cartas) -->
+      <div class="cockpit-controls-row">
+        <button id="roll" class="roll-btn">🎲 Rolar dado</button>
+
+        <div id="cards-dock" class="cards-dock" hidden>
+          <div class="cards-dock-label">🎴 Cartas</div>
+          <div id="cards-fan" class="cards-fan"></div>
+        </div>
+      </div>
+
+      <div id="game-log" class="game-log"></div>
     </div>
 
     <!-- Modal focado de inspeção e confirmação da carta -->
@@ -92,9 +100,13 @@
       </div>
     </div>
 
-    <div id="win" class="overlay" hidden>
-      <h1 id="win-text"></h1>
-      <button id="again">Jogar de novo</button>
+    <div id="win" class="overlay win-overlay" hidden>
+      <div class="win-card">
+        <div id="win-avatar" class="win-avatar">🏆</div>
+        <h1 id="win-text" class="win-title">Vitória!</h1>
+        <p id="win-sub" class="win-sub">Grande campeão do tabuleiro!</p>
+        <button id="again" class="roll-btn full-btn">🎲 Jogar de novo</button>
+      </div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

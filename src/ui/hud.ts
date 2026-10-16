@@ -18,17 +18,18 @@ export const NEXT_PLAYER_TYPE: Record<PlayerType, PlayerType> = {
   hard: 'human',
 };
 
-export const TEAM: Record<Color, { name: string; icon: string; css: string }> = {
-  red: { name: 'Vermelho', icon: '▲', css: '#e84a4a' },
-  green: { name: 'Verde', icon: '●', css: '#3dbb5c' },
-  yellow: { name: 'Amarelo', icon: '■', css: '#d4a800' },
-  blue: { name: 'Azul', icon: '◆', css: '#3b7be8' },
+export const TEAM: Record<Color, { name: string; mascot: string; avatar: string; title: string; icon: string; css: string }> = {
+  red: { name: 'Vermelho', mascot: 'Dona Cocorina', avatar: '🐔', title: 'A Diva do Tabuleiro', icon: '▲', css: '#e84a4a' },
+  green: { name: 'Verde', mascot: 'Abelardo', avatar: '🥑', title: 'O Filósofo Zen', icon: '●', css: '#3dbb5c' },
+  yellow: { name: 'Amarelo', mascot: 'Bananildo', avatar: '🍌', title: 'O Trapalhão Veloz', icon: '■', css: '#d4a800' },
+  blue: { name: 'Azul', mascot: 'Seu Gelinho', avatar: '🐧', title: 'O Cavalheiro Gentil', icon: '◆', css: '#3b7be8' },
 };
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 export const ui = {
   hud: $('hud'), turn: $('turn'), msg: $('msg'), roll: $<HTMLButtonElement>('roll'),
   menu: $('menu'), win: $('win'), winText: $('win-text'), again: $('again'),
+  winAvatar: $('win-avatar'), winSub: $('win-sub'),
   startBtn: $<HTMLButtonElement>('start-btn'),
   quickSoloBtn: $<HTMLButtonElement>('quick-solo-btn'),
   slotsContainer: $('player-slots'),
@@ -70,7 +71,7 @@ export const ui = {
   timerSec: $('timer-sec'),
 };
 
-export const label = (c: Color) => `<span style="color:${TEAM[c].css}">${TEAM[c].icon} ${CHARACTERS[c].name}</span>`;
+export const label = (c: Color) => `<span style="color:${TEAM[c].css}">${TEAM[c].avatar} ${CHARACTERS[c].name}</span>`;
 
 /** Cast list for the menu. */
-export const cast = () => (Object.keys(TEAM) as Color[]).map((c) => `<span>${label(c)}</span>`).join('');
+export const cast = () => (Object.keys(TEAM) as Color[]).map((c) => `<span class="cast-badge" style="border-left: 3px solid ${TEAM[c].css}">${TEAM[c].avatar} <b>${CHARACTERS[c].name}</b></span>`).join('');
