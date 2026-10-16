@@ -51,16 +51,16 @@ export const pickLine = (list: string[]) => list[Math.floor(Math.random() * list
 
 // Shared geometries/materials (reused across all pieces).
 const geo = {
-  sphere: new THREE.SphereGeometry(1, 14, 10),
-  cone: new THREE.ConeGeometry(1, 1, 10),
-  cyl: new THREE.CylinderGeometry(1, 1, 1, 14),
-  capsule: new THREE.CapsuleGeometry(1, 1, 4, 12),
-  torus: new THREE.TorusGeometry(1, 0.15, 6, 16),
-  banana: new THREE.TorusGeometry(0.45, 0.16, 8, 14, Math.PI * 0.75),
+  sphere: new THREE.SphereGeometry(1, 22, 16),
+  cone: new THREE.ConeGeometry(1, 1, 18),
+  cyl: new THREE.CylinderGeometry(1, 1, 1, 20),
+  capsule: new THREE.CapsuleGeometry(1, 1, 8, 18),
+  torus: new THREE.TorusGeometry(1, 0.15, 10, 22),
+  banana: new THREE.TorusGeometry(0.45, 0.16, 12, 20, Math.PI * 0.75),
 };
 const mats = new Map<number, THREE.MeshStandardMaterial>();
 const m = (color: number) => {
-  if (!mats.has(color)) mats.set(color, new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.7 }));
+  if (!mats.has(color)) mats.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.06 }));
   return mats.get(color)!;
 };
 
@@ -70,6 +70,7 @@ function part(g: THREE.BufferGeometry, color: number, pos: [number, number, numb
   typeof scale === 'number' ? mesh.scale.setScalar(scale) : mesh.scale.set(...scale);
   if (rot) mesh.rotation.set(...rot);
   mesh.castShadow = true;
+  mesh.receiveShadow = true;
   return mesh;
 }
 

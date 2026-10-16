@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import type { GameEvent } from '../game/engine';
 import { BASE, Color, DEFAULT_RULES } from '../game/rules';
 import { BASE_ORIGIN, Cell, HOME_COL, TRACK, tokenCell } from './layout';
@@ -9,7 +11,8 @@ import { CAMERA_CONFIG } from './camera.config';
 export const HEX: Record<Color, number> = { red: 0xe84a4a, green: 0x3dbb5c, yellow: 0xf5c518, blue: 0x3b7be8 };
 
 const world = (c: Cell, y = 0) => new THREE.Vector3(c[0] - 7, y, c[1] - 7);
-const mat = (color: number) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.7 });
+const mat = (color: number, roughness = 0.35, metalness = 0.06) =>
+  new THREE.MeshStandardMaterial({ color, roughness, metalness });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Runs fn(t) with t in 0..1 over ms, resolves when done. */
@@ -29,15 +32,15 @@ function tween(ms: number, fn: (t: number) => void) {
 function iconGeometry(color: Color): THREE.BufferGeometry {
   switch (color) {
     case 'red': return new THREE.ConeGeometry(0.16, 0.26, 3);
-    case 'green': return new THREE.SphereGeometry(0.13, 10, 8);
-    case 'yellow': return new THREE.BoxGeometry(0.22, 0.22, 0.22);
+    case 'green': return new THREE.SphereGeometry(0.13, 16, 12);
+    case 'yellow': return new RoundedBoxGeometry(0.22, 0.22, 0.22, 2, 0.03);
     case 'blue': return new THREE.OctahedronGeometry(0.16);
   }
 }
 
-const baseGeo = new THREE.CylinderGeometry(0.32, 0.34, 0.06, 16);
+const baseGeo = new THREE.CylinderGeometry(0.32, 0.35, 0.08, 24);
 const iconGeos = new Map<Color, THREE.BufferGeometry>();
-const iconMat = mat(0xffffff);
+const iconMat = mat(0xffffff, 0.25, 0.1);
 
 /** Procedural dotted circle texture */
 function createDottedRingTexture(): THREE.CanvasTexture {
@@ -62,8 +65,10 @@ const ringPlaneGeo = new THREE.PlaneGeometry(1.2, 1.2);
 /** Piece = team-colored base + character rig + floating shape icon (colorblind support) + dotted selection ring. */
 function createPiece(color: Color, variant: number): THREE.Group {
   const g = new THREE.Group();
-  const base = new THREE.Mesh(baseGeo, mat(HEX[color]));
-  base.position.y = 0.03;
+  const base = new THREE.Mesh(baseGeo, mat(HEX[color], 0.3, 0.1));
+  base.position.y = 0.04;
+  base.castShadow = true;
+  base.receiveShadow = true;
   if (!iconGeos.has(color)) iconGeos.set(color, iconGeometry(color));
   const icon = new THREE.Mesh(iconGeos.get(color)!, iconMat);
   icon.position.y = 1.35;
@@ -97,18 +102,20 @@ function createPiece(color: Color, variant: number): THREE.Group {
 
 function diceFace(n: number): THREE.MeshStandardMaterial {
   const c = document.createElement('canvas');
-  c.width = c.height = 64;
+  c.width = c.height = 128;
   const x = c.getContext('2d')!;
-  x.fillStyle = '#fff';
-  x.fillRect(0, 0, 64, 64);
-  x.fillStyle = '#222';
+  x.fillStyle = '#fdfbf7';
+  x.fillRect(0, 0, 128, 128);
+  x.fillStyle = n === 1 ? '#d93838' : '#1e1e24';
   const pips: Record<number, Cell[]> = {
-    1: [[32, 32]], 2: [[16, 16], [48, 48]], 3: [[16, 16], [32, 32], [48, 48]],
-    4: [[16, 16], [48, 16], [16, 48], [48, 48]], 5: [[16, 16], [48, 16], [32, 32], [16, 48], [48, 48]],
-    6: [[16, 14], [48, 14], [16, 32], [48, 32], [16, 50], [48, 50]],
+    1: [[64, 64]], 2: [[32, 32], [96, 96]], 3: [[32, 32], [64, 64], [96, 96]],
+    4: [[32, 32], [96, 32], [32, 96], [96, 96]], 5: [[32, 32], [96, 32], [64, 64], [32, 96], [96, 96]],
+    6: [[32, 28], [96, 28], [32, 64], [96, 64], [32, 100], [96, 100]],
   };
-  for (const [px, py] of pips[n]) { x.beginPath(); x.arc(px, py, 6, 0, Math.PI * 2); x.fill(); }
-  return new THREE.MeshStandardMaterial({ map: new THREE.CanvasTexture(c) });
+  for (const [px, py] of pips[n]) { x.beginPath(); x.arc(px, py, n === 1 ? 15 : 12, 0, Math.PI * 2); x.fill(); }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.22, metalness: 0.05 });
 }
 
 // Box face order: +x, -x, +y, -y, +z, -z. Rotation that brings each value to +y.
@@ -156,6 +163,7 @@ function createWoodTexture(): THREE.CanvasTexture {
   }
 
   const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(8, 8);
@@ -192,23 +200,35 @@ export class Scene3D {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.scene.environmentIntensity = 0.55;
+    pmrem.dispose();
+
     this.scene.background = new THREE.Color(0x2a1c14);
     this.camera.position.set(0, 16, 13);
     this.cameraTargetPos.set(0, 16, 13);
     this.controls = new OrbitControls(this.camera, canvas);
     Object.assign(this.controls, { enablePan: false, minDistance: 10, maxDistance: 32, maxPolarAngle: Math.PI / 2.35, enableDamping: true });
 
-    this.scene.add(new THREE.HemisphereLight(0xfff1e0, 0x5a4030, 1.8));
-    const sun = new THREE.DirectionalLight(0xfffaed, 1.8);
-    sun.position.set(6, 15, 8);
+    this.scene.add(new THREE.HemisphereLight(0xfff1e0, 0x5a4030, 1.1));
+    const sun = new THREE.DirectionalLight(0xfffaed, 2.0);
+    sun.position.set(7, 16, 9);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10 });
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.02;
+    Object.assign(sun.shadow.camera, { left: -11, right: 11, top: 11, bottom: -11 });
     this.scene.add(sun);
 
     this.buildBoard();
-    this.dice = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), DICE_FACES.map(diceFace));
+    this.dice = new THREE.Mesh(new RoundedBoxGeometry(0.8, 0.8, 0.8, 4, 0.1), DICE_FACES.map(diceFace));
     this.dice.castShadow = true;
+    this.dice.receiveShadow = true;
     this.dice.position.set(0, 0.6, 0);
     this.scene.add(this.dice, this.confetti.points);
 
@@ -222,24 +242,25 @@ export class Scene3D {
     const woodTex = createWoodTexture();
     const tableMat = new THREE.MeshStandardMaterial({
       map: woodTex,
-      roughness: 0.65,
-      metalness: 0.05,
+      roughness: 0.55,
+      metalness: 0.04,
     });
     const table = new THREE.Mesh(new THREE.BoxGeometry(70, 0.6, 70), tableMat);
-    table.position.y = -0.4;
+    table.position.y = -0.42;
     table.receiveShadow = true;
     this.scene.add(table);
 
-    // Board wood frame/border
-    const boardBorder = new THREE.Mesh(new THREE.BoxGeometry(16, 0.25, 16), mat(0x945f34));
-    boardBorder.position.y = -0.15;
+    // Board wood frame/border with beveled edges
+    const boardBorder = new THREE.Mesh(new RoundedBoxGeometry(16.2, 0.28, 16.2, 4, 0.06), mat(0x8c562b, 0.45, 0.05));
+    boardBorder.position.y = -0.16;
+    boardBorder.castShadow = true;
     boardBorder.receiveShadow = true;
     this.scene.add(boardBorder);
 
-    const tileGeo = new THREE.BoxGeometry(0.94, 0.1, 0.94);
+    const tileGeo = new RoundedBoxGeometry(0.94, 0.12, 0.94, 3, 0.03);
     const tile = (c: Cell, color: number) => {
-      const m = new THREE.Mesh(tileGeo, mat(color));
-      m.position.copy(world(c, -0.05));
+      const m = new THREE.Mesh(tileGeo, mat(color, 0.3, 0.05));
+      m.position.copy(world(c, -0.04));
       m.receiveShadow = true;
       this.scene.add(m);
     };
@@ -247,41 +268,50 @@ export class Scene3D {
     const colors: Color[] = ['red', 'green', 'yellow', 'blue'];
     TRACK.forEach((c, i) => {
       const si = starts.indexOf(i);
-      tile(c, si >= 0 ? HEX[colors[si]] : 0xffffff);
+      tile(c, si >= 0 ? HEX[colors[si]] : 0xfbf9f5);
       if (si < 0 && DEFAULT_RULES.safeSquares.includes(i)) {
-        const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), mat(0xbbbbbb));
+        const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), mat(0xc4c4cc, 0.25, 0.35));
         star.scale.y = 0.3;
-        star.position.copy(world(c, 0.03));
+        star.position.copy(world(c, 0.04));
+        star.receiveShadow = true;
         this.scene.add(star);
       } else if (DEFAULT_RULES.luckSquares?.includes(i)) {
         // Clover / Luck icon (green octahedron / diamond)
-        const luckMarker = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), mat(0x22c55e));
+        const luckMarker = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), mat(0x22c55e, 0.25, 0.2));
         luckMarker.scale.y = 0.4;
-        luckMarker.position.copy(world(c, 0.03));
+        luckMarker.position.copy(world(c, 0.04));
+        luckMarker.receiveShadow = true;
         this.scene.add(luckMarker);
       } else if (DEFAULT_RULES.badLuckSquares?.includes(i)) {
         // Hazard / Bad luck icon (purple / red diamond)
-        const badMarker = new THREE.Mesh(new THREE.DodecahedronGeometry(0.18), mat(0xa855f7));
+        const badMarker = new THREE.Mesh(new THREE.DodecahedronGeometry(0.18), mat(0xa855f7, 0.25, 0.2));
         badMarker.scale.y = 0.4;
-        badMarker.position.copy(world(c, 0.03));
+        badMarker.position.copy(world(c, 0.04));
+        badMarker.receiveShadow = true;
         this.scene.add(badMarker);
       }
     });
+    const baseOuterGeo = new RoundedBoxGeometry(5.9, 0.12, 5.9, 3, 0.04);
+    const baseInnerGeo = new RoundedBoxGeometry(3.8, 0.14, 3.8, 3, 0.04);
+    const spotGeo = new THREE.CylinderGeometry(0.38, 0.4, 0.16, 24);
     for (const color of colors) {
       HOME_COL[color].forEach((c) => tile(c, HEX[color]));
       const o = BASE_ORIGIN[color];
-      const base = new THREE.Mesh(new THREE.BoxGeometry(5.9, 0.1, 5.9), mat(HEX[color]));
-      base.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.05));
-      const inner = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.12, 3.8), mat(0xffffff));
-      inner.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.04));
+      const base = new THREE.Mesh(baseOuterGeo, mat(HEX[color], 0.32, 0.06));
+      base.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.04));
+      base.receiveShadow = true;
+      const inner = new THREE.Mesh(baseInnerGeo, mat(0xfbf9f5, 0.3, 0.04));
+      inner.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.03));
+      inner.receiveShadow = true;
       this.scene.add(base, inner);
       for (let t = 0; t < 4; t++) {
-        const spot = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.14, 16), mat(HEX[color]));
-        spot.position.copy(world(tokenCell(color, BASE, t), -0.03));
+        const spot = new THREE.Mesh(spotGeo, mat(HEX[color], 0.28, 0.08));
+        spot.position.copy(world(tokenCell(color, BASE, t), -0.02));
+        spot.receiveShadow = true;
         this.scene.add(spot);
       }
     }
-    // Center goal: four triangles pointing inward.
+    // Center goal: four triangles pointing inward with subtle bevel.
     const tri: Record<Color, Cell[]> = {
       red: [[-1.5, -1.5], [-1.5, 1.5]], green: [[-1.5, -1.5], [1.5, -1.5]],
       yellow: [[1.5, -1.5], [1.5, 1.5]], blue: [[-1.5, 1.5], [1.5, 1.5]],
@@ -289,9 +319,13 @@ export class Scene3D {
     for (const color of colors) {
       const [a, b] = tri[color];
       const shape = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(a[0], -a[1]), new THREE.Vector2(b[0], -b[1])]);
-      const m = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: false }), mat(HEX[color]));
+      const m = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 2 }),
+        mat(HEX[color], 0.3, 0.08)
+      );
       m.rotation.x = -Math.PI / 2;
-      m.position.y = -0.1;
+      m.position.y = -0.09;
+      m.receiveShadow = true;
       this.scene.add(m);
     }
   }
