@@ -84,6 +84,8 @@ let sharedRingBumpTex: THREE.CanvasTexture | null = null;
 let sharedTileBumpTex: THREE.CanvasTexture | null = null;
 
 const baseGeo = new THREE.CylinderGeometry(0.32, 0.35, 0.08, 24);
+const baseTrimGeo = new THREE.TorusGeometry(0.32, 0.022, 10, 24);
+const goldMat = mat(0xfbbf24, 0.28, 0.55);
 const iconGeos = new Map<Color, THREE.BufferGeometry>();
 const iconMat = mat(0xffffff, 0.25, 0.1);
 const pieceBaseMats = new Map<Color, THREE.MeshStandardMaterial>();
@@ -108,7 +110,7 @@ function createDottedRingTexture(): THREE.CanvasTexture {
 let sharedDottedRingTex: THREE.CanvasTexture | null = null;
 const ringPlaneGeo = new THREE.PlaneGeometry(1.2, 1.2);
 
-/** Piece = team-colored base + character rig + floating shape icon (colorblind support) + dotted selection ring. */
+/** Piece = team-colored base + gold trim + character rig + floating shape icon + dotted selection ring. */
 function createPiece(color: Color, variant: number): THREE.Group {
   const g = new THREE.Group();
   if (!sharedRingBumpTex) sharedRingBumpTex = createRingBumpTexture();
@@ -119,6 +121,12 @@ function createPiece(color: Color, variant: number): THREE.Group {
   base.position.y = 0.04;
   base.castShadow = true;
   base.receiveShadow = true;
+
+  const trim = new THREE.Mesh(baseTrimGeo, goldMat);
+  trim.rotation.x = Math.PI / 2;
+  trim.position.y = 0.08;
+  trim.castShadow = true;
+
   if (!iconGeos.has(color)) iconGeos.set(color, iconGeometry(color));
   const icon = new THREE.Mesh(iconGeos.get(color)!, iconMat);
   icon.position.y = 1.35;
@@ -144,7 +152,7 @@ function createPiece(color: Color, variant: number): THREE.Group {
     new THREE.MeshBasicMaterial({ visible: false })
   );
   hitMesh.position.y = 0.9;
-  g.add(base, rig, icon, selectionRing, hitMesh);
+  g.add(base, trim, rig, icon, selectionRing, hitMesh);
   g.userData.rig = rig;
   g.userData.selectionRing = selectionRing;
   return g;
@@ -357,7 +365,7 @@ export class Scene3D {
     const sun = new THREE.DirectionalLight(0xfffaed, 1.45);
     sun.position.set(7, 16, 9);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.mapSize.set(1024, 1024);
     sun.shadow.radius = 2;
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.02;
@@ -408,74 +416,263 @@ export class Scene3D {
     boardBorder.receiveShadow = true;
     this.scene.add(boardBorder);
 
+    // Decorative brass corner studs on the wooden board frame
+    const cornerStudGeo = new THREE.CylinderGeometry(0.28, 0.32, 0.08, 20);
+    for (const [cx, cz] of [[-7.6, -7.6], [7.6, -7.6], [-7.6, 7.6], [7.6, 7.6]]) {
+      const stud = new THREE.Mesh(cornerStudGeo, goldMat);
+      stud.position.set(cx, 0.0, cz);
+      stud.castShadow = true;
+      stud.receiveShadow = true;
+      this.scene.add(stud);
+    }
+
     if (!sharedTileBumpTex) sharedTileBumpTex = createTileBumpTexture();
     if (!sharedRingBumpTex) sharedRingBumpTex = createRingBumpTexture();
 
-    const tileMats = new Map<number, THREE.MeshStandardMaterial>();
-    const getTileMat = (color: number) => {
-      if (!tileMats.has(color)) {
-        tileMats.set(color, mat(color, 0.46, 0.03, sharedTileBumpTex!, 0.008));
+    const tileMats = new Map<string, THREE.MeshStandardMaterial>();
+    const getRichTileMat = (
+      kind: 'normal' | 'start' | 'home' | 'safe' | 'luck' | 'bad',
+      hex = 0xfbf9f5,
+      angle = 0
+    ) => {
+      const key = `${kind}:${hex}:${angle}`;
+      if (tileMats.has(key)) return tileMats.get(key)!;
+
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const ctx = c.getContext('2d')!;
+      const colStr = `#${hex.toString(16).padStart(6, '0')}`;
+
+      // Base fill
+      ctx.fillStyle = colStr;
+      ctx.fillRect(0, 0, 128, 128);
+
+      // Decorative inset frame border
+      ctx.strokeStyle = kind === 'normal' ? '#e2d9c5' : 'rgba(255, 255, 255, 0.42)';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(12, 12, 104, 104);
+
+      if (kind === 'normal') {
+        // Subtle corner dots on standard tiles
+        ctx.fillStyle = '#d5c9b1';
+        for (const [dx, dy] of [[22, 22], [106, 22], [22, 106], [106, 106]]) {
+          ctx.beginPath(); ctx.arc(dx, dy, 3.5, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (kind === 'start') {
+        // Launch pad circle + bold directional arrow
+        ctx.save();
+        ctx.translate(64, 64);
+        ctx.rotate(angle);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+        ctx.beginPath(); ctx.arc(0, 0, 38, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(24, 0);
+        ctx.lineTo(-4, -20);
+        ctx.lineTo(-4, -8);
+        ctx.lineTo(-22, -8);
+        ctx.lineTo(-22, 8);
+        ctx.lineTo(-4, 8);
+        ctx.lineTo(-4, 20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      } else if (kind === 'home') {
+        // Double stepping-stone chevron pointing toward center goal
+        ctx.save();
+        ctx.translate(64, 64);
+        ctx.rotate(angle);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        for (const ox of [-10, 8]) {
+          ctx.beginPath();
+          ctx.moveTo(ox - 10, -18);
+          ctx.lineTo(ox + 8, 0);
+          ctx.lineTo(ox - 10, 18);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if (kind === 'safe') {
+        // Golden shield medallion painted on safe square
+        ctx.fillStyle = '#fef3c7';
+        ctx.beginPath(); ctx.arc(64, 64, 40, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      } else if (kind === 'luck') {
+        // Emerald clover medallion painted on luck square
+        ctx.fillStyle = '#d1fae5';
+        ctx.beginPath(); ctx.arc(64, 64, 40, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      } else if (kind === 'bad') {
+        // Amethyst hazard medallion painted on bad luck square
+        ctx.fillStyle = '#f3e8ff';
+        ctx.beginPath(); ctx.arc(64, 64, 40, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#9333ea';
+        ctx.lineWidth = 5;
+        ctx.stroke();
       }
-      return tileMats.get(color)!;
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+      const m = new THREE.MeshStandardMaterial({
+        map: tex,
+        bumpMap: sharedTileBumpTex!,
+        bumpScale: 0.008,
+        roughness: 0.45,
+        metalness: 0.04,
+      });
+      tileMats.set(key, m);
+      return m;
     };
 
     const tileGeo = new RoundedBoxGeometry(0.94, 0.12, 0.94, 3, 0.03);
-    const tile = (c: Cell, color: number) => {
-      const m = new THREE.Mesh(tileGeo, getTileMat(color));
+    const addTile = (c: Cell, material: THREE.Material) => {
+      const m = new THREE.Mesh(tileGeo, material);
       m.position.copy(world(c, -0.04));
       m.receiveShadow = true;
       this.scene.add(m);
     };
+
     const starts = [0, 13, 26, 39];
+    const startAngles = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
     const colors: Color[] = ['red', 'green', 'yellow', 'blue'];
+    const markerRingGeo = new THREE.TorusGeometry(0.26, 0.03, 10, 24);
+
     TRACK.forEach((c, i) => {
       const si = starts.indexOf(i);
-      tile(c, si >= 0 ? HEX[colors[si]] : 0xfbf9f5);
-      if (si < 0 && DEFAULT_RULES.safeSquares.includes(i)) {
-        const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), mat(0xc4c4cc, 0.25, 0.35));
-        star.scale.y = 0.3;
-        star.position.copy(world(c, 0.04));
+      if (si >= 0) {
+        addTile(c, getRichTileMat('start', HEX[colors[si]], startAngles[si]));
+      } else if (DEFAULT_RULES.safeSquares.includes(i)) {
+        addTile(c, getRichTileMat('safe', 0xfbf9f5));
+        const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), goldMat);
+        star.scale.y = 0.35;
+        star.position.copy(world(c, 0.05));
+        star.castShadow = true;
         star.receiveShadow = true;
-        this.scene.add(star);
+        const ring = new THREE.Mesh(markerRingGeo, goldMat);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.copy(world(c, 0.03));
+        this.scene.add(star, ring);
       } else if (DEFAULT_RULES.luckSquares?.includes(i)) {
-        // Clover / Luck icon (green octahedron / diamond)
-        const luckMarker = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), mat(0x22c55e, 0.25, 0.2));
-        luckMarker.scale.y = 0.4;
-        luckMarker.position.copy(world(c, 0.04));
-        luckMarker.receiveShadow = true;
-        this.scene.add(luckMarker);
+        addTile(c, getRichTileMat('luck', 0xfbf9f5));
+        const luckMarker = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), mat(0x10b981, 0.22, 0.25));
+        luckMarker.scale.y = 0.42;
+        luckMarker.position.copy(world(c, 0.05));
+        luckMarker.castShadow = true;
+        const ring = new THREE.Mesh(markerRingGeo, goldMat);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.copy(world(c, 0.03));
+        this.scene.add(luckMarker, ring);
       } else if (DEFAULT_RULES.badLuckSquares?.includes(i)) {
-        // Hazard / Bad luck icon (purple / red diamond)
-        const badMarker = new THREE.Mesh(new THREE.DodecahedronGeometry(0.18), mat(0xa855f7, 0.25, 0.2));
-        badMarker.scale.y = 0.4;
-        badMarker.position.copy(world(c, 0.04));
-        badMarker.receiveShadow = true;
-        this.scene.add(badMarker);
+        addTile(c, getRichTileMat('bad', 0xfbf9f5));
+        const badMarker = new THREE.Mesh(new THREE.DodecahedronGeometry(0.19), mat(0x9333ea, 0.25, 0.25));
+        badMarker.scale.y = 0.42;
+        badMarker.position.copy(world(c, 0.05));
+        badMarker.castShadow = true;
+        const ring = new THREE.Mesh(markerRingGeo, mat(0x581c87, 0.3, 0.3));
+        ring.rotation.x = Math.PI / 2;
+        ring.position.copy(world(c, 0.03));
+        this.scene.add(badMarker, ring);
+      } else {
+        addTile(c, getRichTileMat('normal', 0xfbf9f5));
       }
     });
+
     const baseOuterGeo = new RoundedBoxGeometry(5.9, 0.12, 5.9, 3, 0.04);
     const baseInnerGeo = new RoundedBoxGeometry(3.8, 0.14, 3.8, 3, 0.04);
     const spotGeo = new THREE.CylinderGeometry(0.38, 0.4, 0.16, 24);
-    const innerBaseMat = mat(0xf6f3ec, 0.52, 0.02, sharedTileBumpTex, 0.005);
+    const spotRimGeo = new THREE.TorusGeometry(0.39, 0.035, 10, 24);
+    const postGeo = new THREE.CylinderGeometry(0.18, 0.2, 0.26, 16);
+    const postCapGeo = new THREE.SphereGeometry(0.19, 16, 12);
+    const homeAngles: Record<Color, number> = { red: 0, green: Math.PI / 2, yellow: Math.PI, blue: -Math.PI / 2 };
+
+    const createYardCourtyardMat = (hex: number) => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const ctx = c.getContext('2d')!;
+      const colStr = `#${hex.toString(16).padStart(6, '0')}`;
+      ctx.fillStyle = '#f8f5ec';
+      ctx.fillRect(0, 0, 256, 256);
+
+      // Decorative double frame in team color
+      ctx.strokeStyle = colStr;
+      ctx.lineWidth = 8;
+      ctx.strokeRect(14, 14, 228, 228);
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(24, 24, 208, 208);
+
+      // Center diamond emblem
+      ctx.save();
+      ctx.translate(128, 128);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = colStr;
+      ctx.globalAlpha = 0.22;
+      ctx.fillRect(-18, -18, 36, 36);
+      ctx.restore();
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+      return new THREE.MeshStandardMaterial({
+        map: tex,
+        bumpMap: sharedTileBumpTex!,
+        bumpScale: 0.005,
+        roughness: 0.5,
+        metalness: 0.02,
+      });
+    };
+
     for (const color of colors) {
-      HOME_COL[color].forEach((c) => tile(c, HEX[color]));
+      HOME_COL[color].forEach((c) => addTile(c, getRichTileMat('home', HEX[color], homeAngles[color])));
       const o = BASE_ORIGIN[color];
-      const base = new THREE.Mesh(baseOuterGeo, mat(HEX[color], 0.48, 0.03, sharedTileBumpTex, 0.006));
+      const teamMat = mat(HEX[color], 0.45, 0.04, sharedTileBumpTex, 0.006);
+      const base = new THREE.Mesh(baseOuterGeo, teamMat);
       base.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.04));
       base.receiveShadow = true;
-      const inner = new THREE.Mesh(baseInnerGeo, innerBaseMat);
+
+      const inner = new THREE.Mesh(baseInnerGeo, createYardCourtyardMat(HEX[color]));
       inner.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.03));
       inner.receiveShadow = true;
       this.scene.add(base, inner);
+
+      // 4 decorative corner posts with gold caps on each player's yard
+      for (const [px, pz] of [[0.3, 0.3], [4.7, 0.3], [0.3, 4.7], [4.7, 4.7]]) {
+        const post = new THREE.Mesh(postGeo, teamMat);
+        post.position.copy(world([o[0] + px, o[1] + pz], 0.08));
+        post.castShadow = true;
+        post.receiveShadow = true;
+        const cap = new THREE.Mesh(postCapGeo, goldMat);
+        cap.scale.y = 0.65;
+        cap.position.copy(world([o[0] + px, o[1] + pz], 0.22));
+        cap.castShadow = true;
+        this.scene.add(post, cap);
+      }
+
       const spotMat = mat(HEX[color], 0.36, 0.06, sharedRingBumpTex, 0.014);
+      const socketRimMat = mat(0xffffff, 0.3, 0.08);
       for (let t = 0; t < 4; t++) {
+        const sc = tokenCell(color, BASE, t);
         const spot = new THREE.Mesh(spotGeo, spotMat);
-        spot.position.copy(world(tokenCell(color, BASE, t), -0.02));
+        spot.position.copy(world(sc, -0.02));
         spot.receiveShadow = true;
-        this.scene.add(spot);
+        const rim = new THREE.Mesh(spotRimGeo, socketRimMat);
+        rim.rotation.x = Math.PI / 2;
+        rim.position.copy(world(sc, 0.05));
+        rim.receiveShadow = true;
+        this.scene.add(spot, rim);
       }
     }
-    // Center goal: four triangles pointing inward with subtle bevel.
+    // Center goal: four triangles pointing inward with subtle bevel + central golden dice arena ring.
     const tri: Record<Color, Cell[]> = {
       red: [[-1.5, -1.5], [-1.5, 1.5]], green: [[-1.5, -1.5], [1.5, -1.5]],
       yellow: [[1.5, -1.5], [1.5, 1.5]], blue: [[-1.5, 1.5], [1.5, 1.5]],
@@ -492,6 +689,17 @@ export class Scene3D {
       m.receiveShadow = true;
       this.scene.add(m);
     }
+
+    // Central golden dice tray ring and ivory pedestal at [0, 0]
+    const centerPad = new THREE.Mesh(new THREE.CylinderGeometry(0.68, 0.72, 0.06, 32), mat(0xfbf9f5, 0.4, 0.05));
+    centerPad.position.set(0, 0.01, 0);
+    centerPad.receiveShadow = true;
+    const centerRing = new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.055, 14, 32), goldMat);
+    centerRing.rotation.x = Math.PI / 2;
+    centerRing.position.set(0, 0.04, 0);
+    centerRing.castShadow = true;
+    centerRing.receiveShadow = true;
+    this.scene.add(centerPad, centerRing);
   }
 
   private resize() {
