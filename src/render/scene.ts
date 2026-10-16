@@ -130,20 +130,20 @@ function createWoodTexture(): THREE.CanvasTexture {
   c.height = 512;
   const ctx = c.getContext('2d')!;
 
-  // Warm wood base
-  ctx.fillStyle = '#b87c44';
+  // Rich warm walnut wood base
+  ctx.fillStyle = '#7a4924';
   ctx.fillRect(0, 0, 512, 512);
 
   // Planks
   const plankHeight = 64;
   for (let y = 0; y < 512; y += plankHeight) {
     // Subtle plank color variance
-    const shade = (Math.random() - 0.5) * 15;
-    ctx.fillStyle = `rgba(${Math.floor(184 + shade)}, ${Math.floor(124 + shade * 0.7)}, ${Math.floor(68 + shade * 0.4)}, 0.4)`;
+    const shade = (Math.random() - 0.5) * 14;
+    ctx.fillStyle = `rgba(${Math.floor(122 + shade)}, ${Math.floor(73 + shade * 0.7)}, ${Math.floor(36 + shade * 0.4)}, 0.45)`;
     ctx.fillRect(0, y, 512, plankHeight);
 
     // Plank seam lines
-    ctx.strokeStyle = 'rgba(70, 40, 18, 0.45)';
+    ctx.strokeStyle = 'rgba(38, 20, 8, 0.55)';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -153,7 +153,7 @@ function createWoodTexture(): THREE.CanvasTexture {
     // Wood grain streaks
     for (let i = 0; i < 18; i++) {
       const gy = y + Math.random() * plankHeight;
-      ctx.strokeStyle = 'rgba(95, 52, 22, 0.12)';
+      ctx.strokeStyle = 'rgba(52, 26, 10, 0.18)';
       ctx.lineWidth = 1 + Math.random() * 2;
       ctx.beginPath();
       ctx.moveTo(0, gy);
@@ -200,13 +200,12 @@ export class Scene3D {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 0.92;
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    this.scene.environmentIntensity = 0.55;
+    this.scene.environmentIntensity = 0.22;
     pmrem.dispose();
 
     this.scene.background = new THREE.Color(0x2a1c14);
@@ -215,11 +214,12 @@ export class Scene3D {
     this.controls = new OrbitControls(this.camera, canvas);
     Object.assign(this.controls, { enablePan: false, minDistance: 10, maxDistance: 32, maxPolarAngle: Math.PI / 2.35, enableDamping: true });
 
-    this.scene.add(new THREE.HemisphereLight(0xfff1e0, 0x5a4030, 1.1));
-    const sun = new THREE.DirectionalLight(0xfffaed, 2.0);
+    this.scene.add(new THREE.HemisphereLight(0xfff1e0, 0x4a3222, 0.75));
+    const sun = new THREE.DirectionalLight(0xfffaed, 1.45);
     sun.position.set(7, 16, 9);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.radius = 2;
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.02;
     Object.assign(sun.shadow.camera, { left: -11, right: 11, top: 11, bottom: -11 });
@@ -242,8 +242,8 @@ export class Scene3D {
     const woodTex = createWoodTexture();
     const tableMat = new THREE.MeshStandardMaterial({
       map: woodTex,
-      roughness: 0.55,
-      metalness: 0.04,
+      roughness: 0.78,
+      metalness: 0.02,
     });
     const table = new THREE.Mesh(new THREE.BoxGeometry(70, 0.6, 70), tableMat);
     table.position.y = -0.42;
@@ -251,7 +251,7 @@ export class Scene3D {
     this.scene.add(table);
 
     // Board wood frame/border with beveled edges
-    const boardBorder = new THREE.Mesh(new RoundedBoxGeometry(16.2, 0.28, 16.2, 4, 0.06), mat(0x8c562b, 0.45, 0.05));
+    const boardBorder = new THREE.Mesh(new RoundedBoxGeometry(16.2, 0.28, 16.2, 4, 0.06), mat(0x6e3f1d, 0.55, 0.04));
     boardBorder.position.y = -0.16;
     boardBorder.castShadow = true;
     boardBorder.receiveShadow = true;
@@ -259,7 +259,7 @@ export class Scene3D {
 
     const tileGeo = new RoundedBoxGeometry(0.94, 0.12, 0.94, 3, 0.03);
     const tile = (c: Cell, color: number) => {
-      const m = new THREE.Mesh(tileGeo, mat(color, 0.3, 0.05));
+      const m = new THREE.Mesh(tileGeo, mat(color, 0.5, 0.03));
       m.position.copy(world(c, -0.04));
       m.receiveShadow = true;
       this.scene.add(m);
@@ -297,15 +297,15 @@ export class Scene3D {
     for (const color of colors) {
       HOME_COL[color].forEach((c) => tile(c, HEX[color]));
       const o = BASE_ORIGIN[color];
-      const base = new THREE.Mesh(baseOuterGeo, mat(HEX[color], 0.32, 0.06));
+      const base = new THREE.Mesh(baseOuterGeo, mat(HEX[color], 0.5, 0.03));
       base.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.04));
       base.receiveShadow = true;
-      const inner = new THREE.Mesh(baseInnerGeo, mat(0xfbf9f5, 0.3, 0.04));
+      const inner = new THREE.Mesh(baseInnerGeo, mat(0xf6f3ec, 0.55, 0.02));
       inner.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.03));
       inner.receiveShadow = true;
       this.scene.add(base, inner);
       for (let t = 0; t < 4; t++) {
-        const spot = new THREE.Mesh(spotGeo, mat(HEX[color], 0.28, 0.08));
+        const spot = new THREE.Mesh(spotGeo, mat(HEX[color], 0.4, 0.05));
         spot.position.copy(world(tokenCell(color, BASE, t), -0.02));
         spot.receiveShadow = true;
         this.scene.add(spot);
@@ -321,7 +321,7 @@ export class Scene3D {
       const shape = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(a[0], -a[1]), new THREE.Vector2(b[0], -b[1])]);
       const m = new THREE.Mesh(
         new THREE.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 2 }),
-        mat(HEX[color], 0.3, 0.08)
+        mat(HEX[color], 0.48, 0.04)
       );
       m.rotation.x = -Math.PI / 2;
       m.position.y = -0.09;
