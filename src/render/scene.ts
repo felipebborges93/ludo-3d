@@ -11,8 +11,8 @@ import { CAMERA_CONFIG } from './camera.config';
 export const HEX: Record<Color, number> = { red: 0xe84a4a, green: 0x3dbb5c, yellow: 0xf5c518, blue: 0x3b7be8 };
 
 const world = (c: Cell, y = 0) => new THREE.Vector3(c[0] - 7, y, c[1] - 7);
-const mat = (color: number, roughness = 0.35, metalness = 0.06) =>
-  new THREE.MeshStandardMaterial({ color, roughness, metalness });
+const mat = (color: number, roughness = 0.35, metalness = 0.06, bumpMap?: THREE.Texture, bumpScale = 0.01) =>
+  new THREE.MeshStandardMaterial({ color, roughness, metalness, bumpMap, bumpScale });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Runs fn(t) with t in 0..1 over ms, resolves when done. */
@@ -38,9 +38,55 @@ function iconGeometry(color: Color): THREE.BufferGeometry {
   }
 }
 
+/** Concentric lathe grooves bump map for token bases and home yard spots. */
+function createRingBumpTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#c0c0c0';
+  ctx.fillRect(0, 0, 128, 128);
+  for (const [r, w, col] of [[54, 5, '#ffffff'], [44, 4, '#555555'], [34, 3, '#e8e8e8'], [22, 3, '#666666']] as const) {
+    ctx.strokeStyle = col;
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.arc(64, 64, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Molded board tile bump map: raised outer bevel, subtle inset inner square, and fine grain. */
+function createTileBumpTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#d8d8d8';
+  ctx.fillRect(0, 0, 128, 128);
+  // Subtle recessed inner panel
+  ctx.fillStyle = '#9a9a9a';
+  ctx.fillRect(12, 12, 104, 104);
+  ctx.fillStyle = '#bcbcbc';
+  ctx.fillRect(16, 16, 96, 96);
+  // Fine tactile grain
+  for (let i = 0; i < 450; i++) {
+    const v = 175 + Math.floor((Math.random() - 0.5) * 30);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(Math.random() * 128, Math.random() * 128, 2, 2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+let sharedRingBumpTex: THREE.CanvasTexture | null = null;
+let sharedTileBumpTex: THREE.CanvasTexture | null = null;
+
 const baseGeo = new THREE.CylinderGeometry(0.32, 0.35, 0.08, 24);
 const iconGeos = new Map<Color, THREE.BufferGeometry>();
 const iconMat = mat(0xffffff, 0.25, 0.1);
+const pieceBaseMats = new Map<Color, THREE.MeshStandardMaterial>();
 
 /** Procedural dotted circle texture */
 function createDottedRingTexture(): THREE.CanvasTexture {
@@ -65,7 +111,11 @@ const ringPlaneGeo = new THREE.PlaneGeometry(1.2, 1.2);
 /** Piece = team-colored base + character rig + floating shape icon (colorblind support) + dotted selection ring. */
 function createPiece(color: Color, variant: number): THREE.Group {
   const g = new THREE.Group();
-  const base = new THREE.Mesh(baseGeo, mat(HEX[color], 0.3, 0.1));
+  if (!sharedRingBumpTex) sharedRingBumpTex = createRingBumpTexture();
+  if (!pieceBaseMats.has(color)) {
+    pieceBaseMats.set(color, mat(HEX[color], 0.32, 0.08, sharedRingBumpTex, 0.015));
+  }
+  const base = new THREE.Mesh(baseGeo, pieceBaseMats.get(color)!);
   base.position.y = 0.04;
   base.castShadow = true;
   base.receiveShadow = true;
@@ -102,20 +152,54 @@ function createPiece(color: Color, variant: number): THREE.Group {
 
 function diceFace(n: number): THREE.MeshStandardMaterial {
   const c = document.createElement('canvas');
-  c.width = c.height = 128;
+  const b = document.createElement('canvas');
+  c.width = c.height = b.width = b.height = 128;
   const x = c.getContext('2d')!;
-  x.fillStyle = '#fdfbf7';
+  const bx = b.getContext('2d')!;
+
+  // Warm ivory base color + slight edge vignette
+  const bgGrad = x.createRadialGradient(64, 64, 16, 64, 64, 88);
+  bgGrad.addColorStop(0, '#fdfbf7');
+  bgGrad.addColorStop(1, '#ede6d8');
+  x.fillStyle = bgGrad;
   x.fillRect(0, 0, 128, 128);
-  x.fillStyle = n === 1 ? '#d93838' : '#1e1e24';
+
+  // Neutral high height on bump map
+  bx.fillStyle = '#e6e6e6';
+  bx.fillRect(0, 0, 128, 128);
+
   const pips: Record<number, Cell[]> = {
     1: [[64, 64]], 2: [[32, 32], [96, 96]], 3: [[32, 32], [64, 64], [96, 96]],
     4: [[32, 32], [96, 32], [32, 96], [96, 96]], 5: [[32, 32], [96, 32], [64, 64], [32, 96], [96, 96]],
     6: [[32, 28], [96, 28], [32, 64], [96, 64], [32, 100], [96, 100]],
   };
-  for (const [px, py] of pips[n]) { x.beginPath(); x.arc(px, py, n === 1 ? 15 : 12, 0, Math.PI * 2); x.fill(); }
+  const r = n === 1 ? 15 : 12;
+  for (const [px, py] of pips[n]) {
+    x.fillStyle = n === 1 ? '#d93838' : '#1e1e24';
+    x.beginPath();
+    x.arc(px, py, r, 0, Math.PI * 2);
+    x.fill();
+
+    // Concave dimple height gradient for each pip
+    const g = bx.createRadialGradient(px, py, 1, px, py, r + 2);
+    g.addColorStop(0, '#101010');
+    g.addColorStop(0.75, '#404040');
+    g.addColorStop(1, '#e6e6e6');
+    bx.fillStyle = g;
+    bx.beginPath();
+    bx.arc(px, py, r + 2, 0, Math.PI * 2);
+    bx.fill();
+  }
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.22, metalness: 0.05 });
+  const bumpTex = new THREE.CanvasTexture(b);
+  return new THREE.MeshStandardMaterial({
+    map: tex,
+    bumpMap: bumpTex,
+    bumpScale: 0.035,
+    roughness: 0.24,
+    metalness: 0.04,
+  });
 }
 
 // Box face order: +x, -x, +y, -y, +z, -z. Rotation that brings each value to +y.
@@ -124,51 +208,106 @@ const DICE_UP: Record<number, [number, number]> = {
   1: [0, 0], 6: [Math.PI, 0], 2: [-Math.PI / 2, 0], 5: [Math.PI / 2, 0], 3: [0, Math.PI / 2], 4: [0, -Math.PI / 2],
 };
 
-function createWoodTexture(): THREE.CanvasTexture {
+/** Generates matching color, bump, and roughness maps for realistic planked wood. */
+function createWoodMaps(repeatX = 8, repeatY = 8, baseRgb: [number, number, number] = [122, 73, 36]) {
   const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 512;
+  const b = document.createElement('canvas');
+  const r = document.createElement('canvas');
+  c.width = c.height = b.width = b.height = r.width = r.height = 512;
   const ctx = c.getContext('2d')!;
+  const btx = b.getContext('2d')!;
+  const rtx = r.getContext('2d')!;
 
-  // Rich warm walnut wood base
-  ctx.fillStyle = '#7a4924';
+  const [br, bg, bb] = baseRgb;
+  ctx.fillStyle = `rgb(${br}, ${bg}, ${bb})`;
   ctx.fillRect(0, 0, 512, 512);
+  btx.fillStyle = '#c8c8c8';
+  btx.fillRect(0, 0, 512, 512);
+  rtx.fillStyle = '#b8b8b8';
+  rtx.fillRect(0, 0, 512, 512);
 
-  // Planks
   const plankHeight = 64;
   for (let y = 0; y < 512; y += plankHeight) {
-    // Subtle plank color variance
-    const shade = (Math.random() - 0.5) * 14;
-    ctx.fillStyle = `rgba(${Math.floor(122 + shade)}, ${Math.floor(73 + shade * 0.7)}, ${Math.floor(36 + shade * 0.4)}, 0.45)`;
+    const shade = (Math.random() - 0.5) * 16;
+    ctx.fillStyle = `rgba(${Math.floor(br + shade)}, ${Math.floor(bg + shade * 0.7)}, ${Math.floor(bb + shade * 0.4)}, 0.5)`;
     ctx.fillRect(0, y, 512, plankHeight);
 
-    // Plank seam lines
-    ctx.strokeStyle = 'rgba(38, 20, 8, 0.55)';
-    ctx.lineWidth = 2;
+    const rShade = Math.floor(175 + (Math.random() - 0.5) * 28);
+    rtx.fillStyle = `rgb(${rShade}, ${rShade}, ${rShade})`;
+    rtx.fillRect(0, y, 512, plankHeight);
+
+    // Plank seam grooves (dark in color and bump, rougher in roughnessMap)
+    ctx.strokeStyle = 'rgba(30, 15, 5, 0.65)';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(512, y);
     ctx.stroke();
 
-    // Wood grain streaks
-    for (let i = 0; i < 18; i++) {
-      const gy = y + Math.random() * plankHeight;
-      ctx.strokeStyle = 'rgba(52, 26, 10, 0.18)';
-      ctx.lineWidth = 1 + Math.random() * 2;
+    btx.strokeStyle = '#222222';
+    btx.lineWidth = 3.5;
+    btx.beginPath();
+    btx.moveTo(0, y);
+    btx.lineTo(512, y);
+    btx.stroke();
+
+    rtx.strokeStyle = '#f0f0f0';
+    rtx.lineWidth = 3;
+    rtx.beginPath();
+    rtx.moveTo(0, y);
+    rtx.lineTo(512, y);
+    rtx.stroke();
+
+    // Vertical plank joint per row
+    const jx = 80 + Math.floor(Math.random() * 350);
+    ctx.beginPath(); ctx.moveTo(jx, y); ctx.lineTo(jx, y + plankHeight); ctx.stroke();
+    btx.beginPath(); btx.moveTo(jx, y); btx.lineTo(jx, y + plankHeight); btx.stroke();
+
+    // Wood grain fibers and pores
+    for (let i = 0; i < 26; i++) {
+      const gy = y + 3 + Math.random() * (plankHeight - 6);
+      const c1 = (Math.random() - 0.5) * 8;
+      const c2 = (Math.random() - 0.5) * 8;
+      const lw = 0.8 + Math.random() * 2;
+
+      ctx.strokeStyle = i % 3 === 0 ? 'rgba(155, 98, 52, 0.14)' : 'rgba(45, 22, 8, 0.2)';
+      ctx.lineWidth = lw;
       ctx.beginPath();
       ctx.moveTo(0, gy);
-      ctx.bezierCurveTo(170, gy + (Math.random() - 0.5) * 6, 340, gy + (Math.random() - 0.5) * 6, 512, gy);
+      ctx.bezierCurveTo(170, gy + c1, 340, gy + c2, 512, gy);
       ctx.stroke();
+
+      btx.strokeStyle = i % 3 === 0 ? 'rgba(235, 235, 235, 0.35)' : 'rgba(80, 80, 80, 0.45)';
+      btx.lineWidth = lw;
+      btx.beginPath();
+      btx.moveTo(0, gy);
+      btx.bezierCurveTo(170, gy + c1, 340, gy + c2, 512, gy);
+      btx.stroke();
+
+      rtx.strokeStyle = i % 2 === 0 ? 'rgba(140, 140, 140, 0.3)' : 'rgba(215, 215, 215, 0.3)';
+      rtx.lineWidth = lw;
+      rtx.beginPath();
+      rtx.moveTo(0, gy);
+      rtx.bezierCurveTo(170, gy + c1, 340, gy + c2, 512, gy);
+      rtx.stroke();
     }
   }
 
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(8, 8);
-  tex.needsUpdate = true;
-  return tex;
+  const cfg = (canvas: HTMLCanvasElement, isColor: boolean) => {
+    const t = new THREE.CanvasTexture(canvas);
+    if (isColor) t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repeatX, repeatY);
+    t.needsUpdate = true;
+    return t;
+  };
+
+  return {
+    map: cfg(c, true),
+    bumpMap: cfg(b, false),
+    roughnessMap: cfg(r, false),
+  };
 }
 
 export class Scene3D {
@@ -238,10 +377,13 @@ export class Scene3D {
   }
 
   private buildBoard() {
-    // Large tabletop taking up the entire background view
-    const woodTex = createWoodTexture();
+    // Large tabletop with color, bump, and roughness wood maps
+    const tableWood = createWoodMaps(8, 8, [122, 73, 36]);
     const tableMat = new THREE.MeshStandardMaterial({
-      map: woodTex,
+      map: tableWood.map,
+      bumpMap: tableWood.bumpMap,
+      bumpScale: 0.025,
+      roughnessMap: tableWood.roughnessMap,
       roughness: 0.78,
       metalness: 0.02,
     });
@@ -250,16 +392,36 @@ export class Scene3D {
     table.receiveShadow = true;
     this.scene.add(table);
 
-    // Board wood frame/border with beveled edges
-    const boardBorder = new THREE.Mesh(new RoundedBoxGeometry(16.2, 0.28, 16.2, 4, 0.06), mat(0x6e3f1d, 0.55, 0.04));
+    // Board wood frame/border with darker mahogany grain and bevels
+    const frameWood = createWoodMaps(2, 2, [92, 50, 22]);
+    const frameMat = new THREE.MeshStandardMaterial({
+      map: frameWood.map,
+      bumpMap: frameWood.bumpMap,
+      bumpScale: 0.02,
+      roughnessMap: frameWood.roughnessMap,
+      roughness: 0.52,
+      metalness: 0.04,
+    });
+    const boardBorder = new THREE.Mesh(new RoundedBoxGeometry(16.2, 0.28, 16.2, 4, 0.06), frameMat);
     boardBorder.position.y = -0.16;
     boardBorder.castShadow = true;
     boardBorder.receiveShadow = true;
     this.scene.add(boardBorder);
 
+    if (!sharedTileBumpTex) sharedTileBumpTex = createTileBumpTexture();
+    if (!sharedRingBumpTex) sharedRingBumpTex = createRingBumpTexture();
+
+    const tileMats = new Map<number, THREE.MeshStandardMaterial>();
+    const getTileMat = (color: number) => {
+      if (!tileMats.has(color)) {
+        tileMats.set(color, mat(color, 0.46, 0.03, sharedTileBumpTex!, 0.008));
+      }
+      return tileMats.get(color)!;
+    };
+
     const tileGeo = new RoundedBoxGeometry(0.94, 0.12, 0.94, 3, 0.03);
     const tile = (c: Cell, color: number) => {
-      const m = new THREE.Mesh(tileGeo, mat(color, 0.5, 0.03));
+      const m = new THREE.Mesh(tileGeo, getTileMat(color));
       m.position.copy(world(c, -0.04));
       m.receiveShadow = true;
       this.scene.add(m);
@@ -294,18 +456,20 @@ export class Scene3D {
     const baseOuterGeo = new RoundedBoxGeometry(5.9, 0.12, 5.9, 3, 0.04);
     const baseInnerGeo = new RoundedBoxGeometry(3.8, 0.14, 3.8, 3, 0.04);
     const spotGeo = new THREE.CylinderGeometry(0.38, 0.4, 0.16, 24);
+    const innerBaseMat = mat(0xf6f3ec, 0.52, 0.02, sharedTileBumpTex, 0.005);
     for (const color of colors) {
       HOME_COL[color].forEach((c) => tile(c, HEX[color]));
       const o = BASE_ORIGIN[color];
-      const base = new THREE.Mesh(baseOuterGeo, mat(HEX[color], 0.5, 0.03));
+      const base = new THREE.Mesh(baseOuterGeo, mat(HEX[color], 0.48, 0.03, sharedTileBumpTex, 0.006));
       base.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.04));
       base.receiveShadow = true;
-      const inner = new THREE.Mesh(baseInnerGeo, mat(0xf6f3ec, 0.55, 0.02));
+      const inner = new THREE.Mesh(baseInnerGeo, innerBaseMat);
       inner.position.copy(world([o[0] + 2.5, o[1] + 2.5], -0.03));
       inner.receiveShadow = true;
       this.scene.add(base, inner);
+      const spotMat = mat(HEX[color], 0.36, 0.06, sharedRingBumpTex, 0.014);
       for (let t = 0; t < 4; t++) {
-        const spot = new THREE.Mesh(spotGeo, mat(HEX[color], 0.4, 0.05));
+        const spot = new THREE.Mesh(spotGeo, spotMat);
         spot.position.copy(world(tokenCell(color, BASE, t), -0.02));
         spot.receiveShadow = true;
         this.scene.add(spot);

@@ -58,9 +58,49 @@ const geo = {
   torus: new THREE.TorusGeometry(1, 0.15, 10, 22),
   banana: new THREE.TorusGeometry(0.45, 0.16, 12, 20, Math.PI * 0.75),
 };
+
+function createOrganicBump(): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 600; i++) {
+    const v = 90 + Math.floor(Math.random() * 85);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.beginPath();
+    ctx.arc(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 3);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+let organicBump: THREE.CanvasTexture | null = null;
 const mats = new Map<number, THREE.MeshStandardMaterial>();
 const m = (color: number) => {
-  if (!mats.has(color)) mats.set(color, new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.06 }));
+  if (!mats.has(color)) {
+    if (!organicBump) organicBump = createOrganicBump();
+    const isAvocadoRind = color === 0x2f6b2a;
+    const isWoodOrPit = color === 0x8a5a2b || color === 0x5a3d1e;
+    const isGold = color === 0xffc93c;
+    const isEyeBlack = color === 0x111111;
+    mats.set(
+      color,
+      new THREE.MeshStandardMaterial({
+        color,
+        roughness: isEyeBlack ? 0.12 : isGold ? 0.25 : isAvocadoRind ? 0.55 : 0.36,
+        metalness: isGold ? 0.55 : 0.05,
+        bumpMap: isEyeBlack ? null : organicBump,
+        bumpScale: isAvocadoRind ? 0.028 : isWoodOrPit ? 0.016 : 0.005,
+      })
+    );
+  }
   return mats.get(color)!;
 };
 
