@@ -148,47 +148,102 @@ function refresh(note = '') {
     }, 2800);
   }
 
+  let inspectingCardId: string | null = null;
+  let inspectingCardColor: Color | null = null;
+
+  function closeCardInspectModal() {
+    inspectingCardId = null;
+    inspectingCardColor = null;
+    if (ui.cardInspectModal) ui.cardInspectModal.hidden = true;
+  }
+
+  if (ui.modalCardClose) {
+    ui.modalCardClose.onclick = () => {
+      sound.click();
+      closeCardInspectModal();
+    };
+  }
+
+  if (ui.modalCardUse) {
+    ui.modalCardUse.onclick = () => {
+      sound.click();
+      if (inspectingCardColor && inspectingCardId) {
+        const c = inspectingCardColor;
+        const id = inspectingCardId;
+        closeCardInspectModal();
+        handleHumanCardPlay(c, id);
+      }
+    };
+  }
+
+  function openCardInspect(color: Color, cardId: string) {
+    const card = getCard(cardId);
+    if (!card || !ui.cardInspectModal) return;
+
+    inspectingCardId = cardId;
+    inspectingCardColor = color;
+
+    if (ui.modalCardBadge) {
+      ui.modalCardBadge.textContent = card.type.toUpperCase();
+      ui.modalCardBadge.className = `modal-card-badge type-${card.type}`;
+    }
+    if (ui.modalCardTitle) ui.modalCardTitle.textContent = card.name;
+    if (ui.modalCardDesc) ui.modalCardDesc.textContent = card.shortText;
+
+    if (ui.modalCardUse) {
+      const canUse = !busy && !state?.cardPlayedThisTurn && card.canPlay(state!, color);
+      ui.modalCardUse.disabled = !canUse;
+      ui.modalCardUse.textContent = canUse ? 'Usar Carta' : 'Indisponível agora';
+    }
+
+    ui.cardInspectModal.hidden = false;
+  }
+
   function renderCardsHand(color: Color, isBot: boolean) {
-    if (!ui.cardsBar || !ui.cardsList) return;
+    if (!ui.cardsDock || !ui.cardsFan) return;
     if (!state || isBot) {
-      ui.cardsBar.hidden = true;
-      ui.cardsList.innerHTML = '';
+      ui.cardsDock.hidden = true;
+      ui.cardsFan.innerHTML = '';
+      closeCardInspectModal();
       return;
     }
 
     const hand = state.hands[color] || [];
     if (hand.length === 0) {
-      ui.cardsBar.hidden = true;
-      ui.cardsList.innerHTML = '';
+      ui.cardsDock.hidden = true;
+      ui.cardsFan.innerHTML = '';
+      closeCardInspectModal();
       return;
     }
 
-    ui.cardsBar.hidden = false;
-    ui.cardsList.innerHTML = '';
+    ui.cardsDock.hidden = false;
+    ui.cardsFan.innerHTML = '';
 
-    for (const cardId of hand) {
+    hand.forEach((cardId, index) => {
       const card = getCard(cardId);
-      if (!card) continue;
+      if (!card) return;
 
       const cardEl = document.createElement('div');
-      cardEl.className = `card-item type-${card.type}`;
+      cardEl.className = `card-fan-item type-${card.type}`;
+      
+      // Calculate slight fan rotation and vertical offset for arcade feel
+      const total = hand.length;
+      const angle = total > 1 ? (index - (total - 1) / 2) * 6 : 0;
+      cardEl.style.transform = `rotate(${angle}deg)`;
+      cardEl.style.zIndex = `${index + 1}`;
+
       cardEl.innerHTML = `
-        <div class="card-title">${card.name}</div>
-        <div class="card-desc">${card.shortText}</div>
-        <button class="card-use-btn">Usar</button>
+        <span class="card-fan-tag">${card.type.slice(0, 3)}</span>
+        <div class="card-fan-title">${card.name}</div>
       `;
 
-      const btn = cardEl.querySelector('button')!;
-      const canUse = !busy && !state.cardPlayedThisTurn && card.canPlay(state, color);
-      btn.disabled = !canUse;
-
-      btn.onclick = () => {
+      cardEl.onclick = () => {
         sound.click();
-        handleHumanCardPlay(color, cardId);
+        openCardInspect(color, cardId);
       };
 
-      ui.cardsList.appendChild(cardEl);
-    }
+      ui.cardsFan.appendChild(cardEl);
+    });
   }
 
   function handleHumanCardPlay(color: Color, cardId: string) {

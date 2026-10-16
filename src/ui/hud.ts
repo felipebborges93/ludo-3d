@@ -55,8 +55,14 @@ export const ui = {
 
   // Cards UI
   cardBanner: $('card-banner'),
-  cardsBar: $('cards-bar'),
-  cardsList: $('cards-list'),
+  cardsDock: $('cards-dock'),
+  cardsFan: $('cards-fan'),
+  cardInspectModal: $('card-inspect-modal'),
+  modalCardBadge: $('modal-card-badge'),
+  modalCardTitle: $('modal-card-title'),
+  modalCardDesc: $('modal-card-desc'),
+  modalCardClose: $<HTMLButtonElement>('modal-card-close'),
+  modalCardUse: $<HTMLButtonElement>('modal-card-use'),
   gameLog: $('game-log'),
 
   // Timer

@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-15T22:35:45Z",
+  "title": "Design System: Ludo 3D",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Laranja Impulso",
+        "canonical": "#ff8a3d",
+        "tonalRamp": ["#4a1f05", "#7a340b", "#ab4b13", "#dc611b", "#ff8a3d", "#ffa66c", "#ffc29b", "#ffe1cf"]
+      },
+      "team-red": {
+        "role": "accent",
+        "displayName": "Vermelho Dona Cocorina",
+        "canonical": "#e84a4a",
+        "tonalRamp": ["#3f0d0d", "#6a1717", "#972424", "#c23636", "#e84a4a", "#f07575", "#f7a4a4", "#fcd5d5"]
+      },
+      "team-green": {
+        "role": "accent",
+        "displayName": "Verde Abelardo",
+        "canonical": "#3dbb5c",
+        "tonalRamp": ["#0c3315", "#165524", "#247935", "#329c47", "#3dbb5c", "#69cc80", "#98dea9", "#cbf0d4"]
+      },
+      "team-yellow": {
+        "role": "accent",
+        "displayName": "Amarelo Bananildo",
+        "canonical": "#f5c518",
+        "tonalRamp": ["#3d3003", "#695307", "#98780c", "#c79e11", "#f5c518", "#f7d34d", "#fae387", "#fcf2c4"]
+      },
+      "team-blue": {
+        "role": "accent",
+        "displayName": "Azul Seu Gelinho",
+        "canonical": "#3b7be8",
+        "tonalRamp": ["#0b1d3d", "#143369", "#204e9c", "#2c6acb", "#3b7be8", "#6ea0ee", "#9ec1f4", "#d0e1fa"]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "Céu Lúdico",
+        "canonical": "#bfe6ff",
+        "tonalRamp": ["#162f42", "#284e6b", "#3d6f95", "#5a92bf", "#bfe6ff", "#d4edff", "#e6f5ff", "#f5fbff"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Título principal e telas comemorativas de vitória." },
+      "headline": { "displayName": "Headline", "purpose": "Códigos de sala e títulos de seções." },
+      "body": { "displayName": "Body", "purpose": "Rótulos de botões, balões de diálogo e instruções." },
+      "label": { "displayName": "Label", "purpose": "Descrições de cartas, temporizador e logs." }
+    },
+    "shadows": [
+      {
+        "name": "button-tactile",
+        "value": "0 4px 0 #c45d1a",
+        "purpose": "Proporciona sensação física de botão de arcade nos controles primários."
+      },
+      {
+        "name": "panel-glass",
+        "value": "0 12px 30px rgba(0, 0, 0, 0.25)",
+        "purpose": "Elevação de modais e painéis sobre o tabuleiro 3D."
+      },
+      {
+        "name": "card-subtle",
+        "value": "0 3px 6px rgba(0, 0, 0, 0.08)",
+        "purpose": "Separação sutil de cartas táticas e itens do inventário."
+      }
+    ],
+    "motion": [
+      {
+        "name": "button-press",
+        "value": "transform 0.05s ease",
+        "purpose": "Sensação instantânea ao clique ou toque."
+      },
+      {
+        "name": "banner-pop",
+        "value": "cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+        "purpose": "Aparência elástica de cartas jogadas e notificações de eventos."
+      }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "480px" },
+      { "name": "tablet", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botão Primário Tátil",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Botão principal de ação física (rolar dado, iniciar partida).",
+      "html": "<button class=\"ds-btn-primary\">🎲 Rolar dado</button>",
+      "css": ".ds-btn-primary { font: 600 1.05rem system-ui; padding: 0.6em 1.2em; border: 0; border-radius: 999px; background: #ff8a3d; color: #fff; box-shadow: 0 4px 0 #c45d1a; cursor: pointer; transition: transform 0.05s; } .ds-btn-primary:active { transform: translateY(3px); box-shadow: 0 1px 0 #c45d1a; }"
+    },
+    {
+      "name": "Carta Tática",
+      "kind": "card",
+      "refersTo": "card-container",
+      "description": "Exibição de carta de poder do jogador com faixa de categoria.",
+      "html": "<div class=\"ds-card-item ds-type-ataque\"><div class=\"ds-card-title\">Passo Firme</div><div class=\"ds-card-desc\">Avance 3 casas extras.</div><button class=\"ds-card-btn\">Usar</button></div>",
+      "css": ".ds-card-item { background: #ffffff; border: 2px solid #cbd5e1; border-top: 4px solid #ef4444; border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 3px 6px rgba(0,0,0,0.08); text-align: left; max-width: 140px; font-family: system-ui; } .ds-card-title { font-size: 0.85rem; font-weight: 800; color: #1e293b; } .ds-card-desc { font-size: 0.72rem; color: #64748b; } .ds-card-btn { font-size: 0.75rem; padding: 0.3em 0.6em; border-radius: 6px; background: #ff8a3d; color: #fff; font-weight: 700; border: none; cursor: pointer; align-self: flex-end; }"
+    },
+    {
+      "name": "Balão de Fala do Mascote",
+      "kind": "custom",
+      "refersTo": "bubble",
+      "description": "Balão de diálogo posicionado sobre o peão 3D.",
+      "html": "<div class=\"ds-bubble\">Abram alas para a diva!</div>",
+      "css": ".ds-bubble { position: relative; background: #fff; color: #222; padding: 6px 12px; border-radius: 14px; font-weight: 700; font-size: 0.95rem; text-align: center; box-shadow: 0 3px 0 rgba(0,0,0,0.2); font-family: system-ui; display: inline-block; } .ds-bubble::after { content: ''; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%); border: 8px solid transparent; border-top-color: #fff; border-bottom: 0; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "O Tabuleiro Vivo dos Mascotes",
+    "overview": "O universo visual de Ludo 3D combina a nostalgia calorosa do clássico jogo de tabuleiro com a energia vibrante e responsiva de um arcade mobile moderno. O centro gravitacional da experiência são os quatro mascotes carismáticos — Dona Cocorina (Vermelho), Seu Gelinho (Azul), Abelardo (Verde) e Bananildo (Amarelo) — que dão vida física a cada movimento, captura e vitória.",
+    "keyCharacteristics": [
+      "Fidelidade aos 4 Quadrantes canônicos com suporte visual a daltônicos.",
+      "Híbrido Tátil-Arcade unindo superfícies de vidro translúcido com botões físicos que afundam ao toque.",
+      "Micro-momentos de humor através de diálogos e balões de fala reativos.",
+      "Ergonomia mobile-first com alvos de toque generosos e 60 fps constantes."
+    ],
+    "rules": [
+      {
+        "name": "The Team Palette Rule",
+        "body": "Cada jogador e mascote retém sua cor correspondente em 100% dos indicadores visuais.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tactile Button Rule",
+        "body": "Todo botão clicável principal deve afundar fisicamente (translateY(3px)) no estado ativo.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Manter a área de clique de botões e seletores com pelo menos 44x44px.",
+      "Utilizar safe-area-inset para evitar sobreposição em entalhes de tela em smartphones.",
+      "Associar cada carta a uma das 4 cores de categoria sem misturar convenções.",
+      "Preservar a sensação física nos cliques com a redução de sombra e deslocamento."
+    ],
+    "donts": [
+      "Utilizar fontes pesadas da web que retardem o carregamento inicial do jogo.",
+      "Poluir o centro da tela com menus estáticos durante a rolagem de dados ou movimento de peças.",
+      "Remover os ícones geométricos dos peões 3D, pois garantem suporte a jogadores daltônicos.",
+      "Criar sombras puramente decorativas que interfiram na nitidez das peças ou do tabuleiro."
+    ]
+  }
+}

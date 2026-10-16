@@ -17,12 +17,27 @@
       <div id="timer-badge" hidden>⏱️ <span id="timer-sec">30</span>s</div>
       <div id="turn"></div>
       <div id="msg"></div>
-      <div id="cards-bar" class="cards-bar" hidden>
-        <div class="cards-header">🎴 Suas Cartas:</div>
-        <div id="cards-list" class="cards-list"></div>
-      </div>
       <button id="roll">🎲 Rolar dado</button>
       <div id="game-log" class="game-log"></div>
+    </div>
+
+    <!-- Dock compacto em leque de cartas na lateral inferior -->
+    <div id="cards-dock" class="cards-dock" hidden>
+      <div class="cards-dock-label">Cartas</div>
+      <div id="cards-fan" class="cards-fan"></div>
+    </div>
+
+    <!-- Modal focado de inspeção e confirmação da carta -->
+    <div id="card-inspect-modal" class="card-modal-backdrop" hidden>
+      <div class="card-modal-box">
+        <div id="modal-card-badge" class="modal-card-badge">ATAQUE</div>
+        <h2 id="modal-card-title" class="modal-card-title">Nome da Carta</h2>
+        <p id="modal-card-desc" class="modal-card-desc">Descrição completa do efeito da carta.</p>
+        <div class="card-modal-actions">
+          <button id="modal-card-close" class="secondary-btn">Fechar</button>
+          <button id="modal-card-use" class="action-btn">Usar Carta</button>
+        </div>
+      </div>
     </div>
 
     <div id="menu" class="overlay">
